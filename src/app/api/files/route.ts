@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { initialize } from "@/lib/db";
-import { actor, checkOrigin } from "@/lib/security";
+import { requestActor, checkOrigin } from "@/lib/security";
 import { upload } from "@/lib/storage";
 import { failure } from "@/lib/http";
 import { AppError } from "@/lib/types";
@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   try {
     checkOrigin(request);
     await initialize();
-    const a = await actor();
+    const a = await requestActor(request);
     const max = Number(process.env.MAX_FILE_MB || 10) * 1024 * 1024;
     if (Number(request.headers.get("content-length") || 0) > max + 100000)
       throw new AppError("File vượt giới hạn dung lượng.", 413);

@@ -43,6 +43,14 @@ import {
   type SnapshotLoader,
 } from "@/lib/client-snapshot";
 
+import {
+  accountFetch as scopedFetch,
+  accountApiUrl,
+  rememberAccount,
+  forgetAccount,
+  workspacePath,
+} from "@/lib/account-context";
+
 type Data = Record<string, any>;
 type Dialog = { type: string; item?: Row };
 const money = (n: number) =>
@@ -234,11 +242,14 @@ export default function Dashboard({ initial }: { initial: Data }) {
   >({});
   const formRef = useRef<HTMLFormElement>(null);
   const mutating = useRef(false);
+  const accountFetch = (path: string, init?: RequestInit) =>
+    scopedFetch(initial.actor.id, path, init);
   const snapshotLoader = useRef<SnapshotLoader<Data> | null>(null);
   if (!snapshotLoader.current)
     snapshotLoader.current = createSnapshotLoader(async () => {
-      const response = await fetch("/api/data", { cache: "no-store" });
+      const response = await accountFetch("/api/data", { cache: "no-store" });
       if (response.status === 401) {
+        forgetAccount(initial.actor.id);
         window.location.assign("/login");
         throw new Error("Phiên đăng nhập đã hết hạn.");
       }
@@ -248,7 +259,8 @@ export default function Dashboard({ initial }: { initial: Data }) {
           next?.error || "Chưa thể cập nhật danh sách mới. Vui lòng thử lại.",
         );
       if (next.actor?.id !== initial.actor.id) {
-        window.location.assign("/");
+        forgetAccount(initial.actor.id);
+        window.location.assign("/login");
         throw new Error("Tài khoản đăng nhập đã thay đổi.");
       }
       return next as Data;
@@ -273,6 +285,7 @@ export default function Dashboard({ initial }: { initial: Data }) {
     return snapshotLoader.current!.refresh();
   }
   useEffect(() => {
+    rememberAccount(initial.actor.id);
     const timer = setInterval(() => {
       if (!mutating.current) void refresh().catch(() => {});
     }, 25000);
@@ -335,7 +348,7 @@ export default function Dashboard({ initial }: { initial: Data }) {
     setDialog({ type, item });
   }
   async function api(action: string, values: Row = {}) {
-    const r = await fetch("/api/actions", {
+    const r = await accountFetch("/api/actions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, ...values }),
@@ -372,7 +385,7 @@ export default function Dashboard({ initial }: { initial: Data }) {
     form.set("assignment_id", assignmentId);
     if (submissionId) form.set("submission_id", submissionId);
     form.set("file", file);
-    const r = await fetch("/api/files", { method: "POST", body: form });
+    const r = await accountFetch("/api/files", { method: "POST", body: form });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error);
   }
@@ -776,7 +789,7 @@ export default function Dashboard({ initial }: { initial: Data }) {
         <div className="sidebar-backdrop" onClick={() => setMobile(false)} />
       )}
       <aside className={`sidebar ${mobile ? "open" : ""}`}>
-        <a href="/" className="brand">
+        <a href={workspacePath(initial.actor.id)} className="brand">
           <span className="brand-icon">
             <BookOpen size={22} />
           </span>
@@ -836,6 +849,9 @@ export default function Dashboard({ initial }: { initial: Data }) {
               </button>
             </>
           )}
+          <a href="/login" target="_blank" rel="noopener" className="nav-item">
+            <Users size={18} /> Mở tài khoản khác
+          </a>
           <div className="sidebar-note">
             <span className="note-icon">✦</span>
             <strong>Mỗi buổi học, một tiến bộ.</strong>
@@ -848,11 +864,12 @@ export default function Dashboard({ initial }: { initial: Data }) {
           <button
             className="profile"
             onClick={async () => {
-              await fetch("/api/auth", {
+              await accountFetch("/api/auth", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ action: "logout" }),
               });
+              forgetAccount(initial.actor.id);
               window.location.assign("/login");
             }}
           >
@@ -1030,7 +1047,10 @@ export default function Dashboard({ initial }: { initial: Data }) {
                 </button>
               )}
               {tab === "reports" && (
-                <a className="button" href="/api/export">
+                <a
+                  className="button"
+                  href={accountApiUrl("/api/export", initial.actor.id)}
+                >
                   <Download size={17} />
                   Xuất báo cáo CSV
                 </a>
@@ -1257,7 +1277,13 @@ export default function Dashboard({ initial }: { initial: Data }) {
                 </select>
               )}
               {tab === "students" && (
-                <a className="button" href="/api/export?type=students">
+                <a
+                  className="button"
+                  href={accountApiUrl(
+                    "/api/export?type=students",
+                    initial.actor.id,
+                  )}
+                >
                   <Download size={16} />
                   Xuất danh sách
                 </a>
@@ -1827,7 +1853,10 @@ export default function Dashboard({ initial }: { initial: Data }) {
               <section className="panel table-panel">
                 <div className="panel-heading">
                   <h2>Lịch sử nhận tiền</h2>
-                  <a className="button small" href="/api/export">
+                  <a
+                    className="button small"
+                    href={accountApiUrl("/api/export", initial.actor.id)}
+                  >
                     <Download size={15} />
                     Xuất CSV
                   </a>
@@ -2028,7 +2057,13 @@ export default function Dashboard({ initial }: { initial: Data }) {
                     <dd>Giữ tối thiểu 3 tháng, chưa tự xóa</dd>
                   </div>
                 </dl>
-                <a className="button" href="/api/export?type=json">
+                <a
+                  className="button"
+                  href={accountApiUrl(
+                    "/api/export?type=json",
+                    initial.actor.id,
+                  )}
+                >
                   <Download size={16} />
                   Xuất dữ liệu được phép truy cập
                 </a>
@@ -2645,7 +2680,10 @@ export default function Dashboard({ initial }: { initial: Data }) {
                             <a
                               className="file-link"
                               key={f.id}
-                              href={`/api/files/${f.id}`}
+                              href={accountApiUrl(
+                                `/api/files/${f.id}`,
+                                initial.actor.id,
+                              )}
                             >
                               <Paperclip size={16} />
                               {f.name}
@@ -3164,8 +3202,8 @@ export default function Dashboard({ initial }: { initial: Data }) {
                       disabled={busy}
                       onClick={async () => {
                         await refresh();
-                        const latest = await fetch("/api/data").then((r) =>
-                          r.json(),
+                        const latest = await accountFetch("/api/data").then(
+                          (r) => r.json(),
                         );
                         const invoice = latest.invoices?.find(
                           (i: Row) => i.id === dialog.item!.id,
@@ -3250,7 +3288,10 @@ export default function Dashboard({ initial }: { initial: Data }) {
                           .map((f: Row) => (
                             <a
                               className="file-link"
-                              href={`/api/files/${f.id}`}
+                              href={accountApiUrl(
+                                `/api/files/${f.id}`,
+                                initial.actor.id,
+                              )}
                               key={f.id}
                             >
                               <Paperclip size={16} />
@@ -3297,7 +3338,10 @@ export default function Dashboard({ initial }: { initial: Data }) {
                                 .map((f: Row) => (
                                   <a
                                     className="file-link"
-                                    href={`/api/files/${f.id}`}
+                                    href={accountApiUrl(
+                                      `/api/files/${f.id}`,
+                                      initial.actor.id,
+                                    )}
                                     key={f.id}
                                   >
                                     <Paperclip size={15} />

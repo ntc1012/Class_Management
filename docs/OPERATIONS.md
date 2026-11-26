@@ -53,6 +53,12 @@ Dùng backup/PITR của nhà cung cấp PostgreSQL; phục hồi vào database m
 
 ## Giới hạn kiểm chứng
 
+### Đăng nhập nhiều tài khoản
+
+Mỗi tab làm việc dùng URL `/workspace/<account-id>` cố định. Có thể chọn **Mở tài khoản khác** để đăng nhập trong tab mới. Đăng xuất chỉ kết thúc phiên của tài khoản được chọn, không đăng xuất tài khoản khác.
+
+Mỗi tài khoản có cookie HttpOnly riêng. Trình duyệt chỉ lưu mã tài khoản trong sessionStorage; mã này không phải thông tin xác thực. API kiểm tra mã tài khoản với phiên đã đăng nhập cho mọi thao tác, tải file và xuất dữ liệu, không tự chuyển sang tài khoản đăng nhập sau. Tab đang mở từ phiên bản cũ cần tải lại và đăng nhập lại một lần sau khi triển khai.
+
 - Chưa thao tác trực tiếp Neon/Vercel của người dùng qua connector trong phiên này; trạng thái trên web do người dùng kiểm tra.
 - Giao dịch tiền thật và kho S3 chưa được kiểm chứng bằng tài khoản thực tế.
 - Schema bản đầu tạo idempotent; thay đổi tiếp theo cần migration có phiên bản và kiểm thử trên bản sao.

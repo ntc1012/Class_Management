@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { initialize, query, now } from "@/lib/db";
-import { actor, checkOrigin } from "@/lib/security";
+import { requestActor, checkOrigin } from "@/lib/security";
 import { failure, jsonBody } from "@/lib/http";
 import * as service from "@/lib/service";
 import {
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   try {
     checkOrigin(request);
     await initialize();
-    const a = await actor();
+    const a = await requestActor(request);
     const body = await jsonBody(request);
     const action = z.string().max(50).parse(body.action);
     let result: unknown;

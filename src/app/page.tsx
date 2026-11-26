@@ -1,17 +1,15 @@
-import { redirect } from "next/navigation";
 import { initialize } from "@/lib/db";
 import { actor } from "@/lib/security";
-import { snapshot } from "@/lib/snapshot";
-import Dashboard from "@/components/dashboard";
+import AccountHome from "@/components/account-home";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export default async function Page() {
   await initialize();
-  let user;
+  let defaultAccount: string | null = null;
   try {
-    user = await actor();
+    defaultAccount = (await actor()).id;
   } catch {
-    redirect("/login");
+    /* Each tab can still select its own authenticated account. */
   }
-  return <Dashboard initial={await snapshot(user)} />;
+  return <AccountHome defaultAccount={defaultAccount} />;
 }

@@ -2,7 +2,6 @@ import {
   randomBytes,
   scryptSync,
   timingSafeEqual,
-  createHash,
   createCipheriv,
   createDecipheriv,
 } from "node:crypto";
@@ -10,9 +9,17 @@ import { cookies } from "next/headers";
 import { one, query, transaction, now, lock } from "./db";
 import { AppError, type Actor } from "./types";
 import { isTrustedOrigin } from "./origin";
+import { accountFromRequest } from "./account-context";
+import {
+  LEGACY_SESSION_COOKIE,
+  accountCookieName,
+  resolveSession,
+  issueSession,
+  revokeSession,
+  tokenDigest,
+} from "./session-store";
 
-export const digest = (value: string) =>
-  createHash("sha256").update(value).digest("hex");
+export const digest = tokenDigest;
 export function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
   return `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
@@ -29,16 +36,37 @@ export function verifyPassword(password: string, stored: string) {
     return false;
   }
 }
-export async function actor(): Promise<Actor> {
-  const token = (await cookies()).get("classflow_session")?.value;
-  const user =
-    token &&
-    (await one(
-      `SELECT u.id,u.center_id,u.role,u.name,u.email FROM users u JOIN auth_sessions s ON s.user_id=u.id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`,
-      [digest(token), now()],
-    ));
-  if (!user) throw new AppError("Vui lòng đăng nhập.", 401);
-  return user as Actor;
+export async function actor(accountId?: string): Promise<Actor> {
+  const jar = await cookies(),
+    selected = await resolveSession((name) => jar.get(name)?.value, accountId);
+  if (!selected) throw new AppError("Vui lòng đăng nhập.", 401);
+  return selected.actor;
+}
+function cookieOptions(expiresAt: string) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    expires: new Date(expiresAt),
+  };
+}
+export async function requestActor(request: Request): Promise<Actor> {
+  const accountId = accountFromRequest(request),
+    jar = await cookies(),
+    selected = await resolveSession((name) => jar.get(name)?.value, accountId);
+  if (!selected)
+    throw new AppError(
+      "Phiên đăng nhập của tài khoản trong tab này đã hết hạn.",
+      401,
+    );
+  if (selected.fromLegacy)
+    jar.set(
+      accountCookieName(accountId),
+      selected.token,
+      cookieOptions(selected.expiresAt),
+    );
+  return selected.actor;
 }
 export async function login(email: string, password: string) {
   const key = `login:${email.toLowerCase()}`;
@@ -74,28 +102,39 @@ export async function login(email: string, password: string) {
     throw new AppError("Tài khoản hoặc mật khẩu không đúng.", 401);
   await query("DELETE FROM auth_limits WHERE key=?", [key]);
   await startSession(user.id);
+  return { accountId: user.id };
 }
 export async function startSession(userId: string) {
-  const token = randomBytes(32).toString("hex");
-  await query(
-    "INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)",
-    [digest(token), userId, new Date(Date.now() + 7 * 86400_000).toISOString()],
+  const jar = await cookies(),
+    read = (name: string) => jar.get(name)?.value;
+  const previous = await resolveSession(read);
+  if (previous) {
+    const bound = await resolveSession(read, previous.userId);
+    if (bound?.fromLegacy)
+      jar.set(
+        accountCookieName(bound.userId),
+        bound.token,
+        cookieOptions(bound.expiresAt),
+      );
+  }
+  const session = await issueSession(userId);
+  jar.set(
+    accountCookieName(userId),
+    session.token,
+    cookieOptions(session.expiresAt),
   );
-  (await cookies()).set("classflow_session", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 7 * 86400,
-  });
+  jar.set(
+    LEGACY_SESSION_COOKIE,
+    session.token,
+    cookieOptions(session.expiresAt),
+  );
 }
-export async function logout() {
-  const cookie = (await cookies()).get("classflow_session");
-  if (cookie)
-    await query("DELETE FROM auth_sessions WHERE token_hash=?", [
-      digest(cookie.value),
-    ]);
-  (await cookies()).delete("classflow_session");
+export async function logout(accountId: string) {
+  const jar = await cookies(),
+    selected = await revokeSession((name) => jar.get(name)?.value, accountId);
+  jar.delete(accountCookieName(accountId));
+  if (selected && jar.get(LEGACY_SESSION_COOKIE)?.value === selected.token)
+    jar.delete(LEGACY_SESSION_COOKIE);
 }
 export async function activation(userId: string) {
   const code = randomBytes(16).toString("hex");

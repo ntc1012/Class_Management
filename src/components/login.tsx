@@ -12,6 +12,11 @@ import {
   ClipboardCheck,
 } from "lucide-react";
 import { TeacherIllustration, StudentIllustration } from "./login-art";
+import {
+  rememberAccount,
+  validAccountId,
+  workspacePath,
+} from "@/lib/account-context";
 
 export default function Login() {
   const [activate, setActivate] = useState(false),
@@ -73,7 +78,14 @@ export default function Login() {
         );
         setActivate(false);
         setVisible(false);
-      } else window.location.assign("/");
+      } else {
+        if (!validAccountId(data.accountId))
+          throw new Error(
+            "Chưa thể xác định tài khoản. Vui lòng tải lại trang rồi đăng nhập.",
+          );
+        rememberAccount(data.accountId);
+        window.location.assign(workspacePath(data.accountId));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Không thể kết nối.");
     } finally {

@@ -2,7 +2,7 @@ node_modules/
 .next/
 .env*
 !.env.example
-data/
+/data/
 backups/
 test-results/
 playwright-report/

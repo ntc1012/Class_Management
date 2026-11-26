@@ -1,5 +1,5 @@
 import { initialize } from "@/lib/db";
-import { actor } from "@/lib/security";
+import { requestActor } from "@/lib/security";
 import { snapshot } from "@/lib/snapshot";
 import { failure } from "@/lib/http";
 import { staff } from "@/lib/policy";
@@ -12,7 +12,7 @@ function cell(value: unknown) {
 export async function GET(request: Request) {
   try {
     await initialize();
-    const a = await actor();
+    const a = await requestActor(request);
     staff(a);
     const data = await snapshot(a);
     const type = new URL(request.url).searchParams.get("type");
