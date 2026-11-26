@@ -232,6 +232,49 @@ export async function enroll(a: Actor, input: unknown) {
     return { ok: true };
   });
 }
+export async function enrollMany(a: Actor, input: unknown) {
+  staff(a);
+  const d = z
+    .object({
+      class_id: text,
+      student_ids: z.array(text).min(1, "Chọn ít nhất một học sinh.").max(500),
+    })
+    .parse(input);
+  return transaction(async () => {
+    await classAccess(a, d.class_id, true);
+    const c = await lock("SELECT * FROM classes WHERE id=? AND center_id=?", [
+      d.class_id,
+      a.center_id,
+    ]);
+    await classAccess(a, d.class_id, true);
+    const students = [...new Set(d.student_ids)];
+    // Validate every selected profile before writing; failures roll back the entire batch.
+    for (const studentId of students) await studentAccess(a, studentId);
+    const existing = await query(
+      "SELECT student_id FROM enrollments WHERE class_id=? AND ended_at IS NULL",
+      [c.id],
+    );
+    const already = new Set(existing.map((e) => e.student_id));
+    const added = students.filter((id) => !already.has(id));
+    if (existing.length + added.length > Number(c.capacity))
+      throw new AppError(
+        `Lớp chỉ còn ${Math.max(0, Number(c.capacity) - existing.length)} chỗ. Vui lòng giảm số học sinh đã chọn.`,
+      );
+    const joinedAt = now();
+    for (const studentId of added) {
+      await query(
+        "INSERT INTO enrollments(id,center_id,class_id,student_id,joined_at) VALUES(?,?,?,?,?)",
+        [id(), a.center_id, c.id, studentId, joinedAt],
+      );
+      await audit(a, "class.enroll", "class", c.id, { student_id: studentId });
+    }
+    return {
+      ok: true,
+      count: added.length,
+      skipped: students.length - added.length,
+    };
+  });
+}
 export async function assignClass(a: Actor, input: unknown) {
   owner(a);
   const d = z

@@ -49,6 +49,9 @@ export async function POST(request: Request) {
       case "class.enroll":
         result = await service.enroll(a, body);
         break;
+      case "class.enroll-many":
+        result = await service.enrollMany(a, body);
+        break;
       case "class.unenroll":
         result = await service.endEnrollment(a, body);
         break;

@@ -37,6 +37,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import type { Row } from "@/lib/types";
+import StudentPicker from "./student-picker";
 import {
   createSnapshotLoader,
   addCreatedClass,
@@ -241,6 +242,20 @@ export default function Dashboard({ initial }: { initial: Data }) {
     Record<string, string>
   >({});
   const formRef = useRef<HTMLFormElement>(null);
+  const [enrollmentSelection, setEnrollmentSelection] = useState<string[]>([]);
+  const enrollmentSlots =
+    dialog?.type === "enroll"
+      ? Math.max(
+          0,
+          Number(
+            data.classes.find((c: Row) => c.id === dialog.item!.id)?.capacity ??
+              dialog.item!.capacity,
+          ) -
+            data.enrollments.filter(
+              (e: Row) => e.class_id === dialog.item!.id && !e.ended_at,
+            ).length,
+        )
+      : 0;
   const mutating = useRef(false);
   const accountFetch = (path: string, init?: RequestInit) =>
     scopedFetch(initial.actor.id, path, init);
@@ -345,6 +360,7 @@ export default function Dashboard({ initial }: { initial: Data }) {
     setError("");
     setResult(null);
     setAttendanceDraft({});
+    setEnrollmentSelection([]);
     setDialog({ type, item });
   }
   async function api(action: string, values: Row = {}) {
@@ -477,8 +493,8 @@ export default function Dashboard({ initial }: { initial: Data }) {
           setResult(response);
           break;
         case "enroll":
-          response = await api("class.enroll", {
-            ...values,
+          response = await api("class.enroll-many", {
+            student_ids: form.getAll("student_ids"),
             class_id: item!.id,
           });
           break;
@@ -588,7 +604,9 @@ export default function Dashboard({ initial }: { initial: Data }) {
             ? "Đã cập nhật phân công giáo viên."
             : dialog.type === "class"
               ? `Đã tạo lớp ${response.class?.name || ""}.`
-              : "Đã lưu thay đổi.",
+              : dialog.type === "enroll"
+                ? `Đã thêm ${response.count} học sinh vào lớp.${response.skipped ? ` ${response.skipped} học sinh đã có trong lớp được bỏ qua.` : ""}`
+                : "Đã lưu thay đổi.",
         );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Có lỗi xảy ra.");
@@ -2445,24 +2463,22 @@ export default function Dashboard({ initial }: { initial: Data }) {
                           Thêm học sinh vào <strong>{dialog.item!.name}</strong>
                           .
                         </p>
-                        <Select name="student_id" label="Chọn học sinh">
-                          <option value="">Chọn học sinh</option>
-                          {data.students
-                            .filter(
-                              (s: Row) =>
-                                !data.enrollments.some(
-                                  (e: Row) =>
-                                    e.class_id === dialog.item!.id &&
-                                    e.student_id === s.id &&
-                                    !e.ended_at,
-                                ),
-                            )
-                            .map((s: Row) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
-                            ))}
-                        </Select>
+                        <StudentPicker
+                          key={dialog.item!.id}
+                          selected={enrollmentSelection}
+                          onChange={setEnrollmentSelection}
+                          available={enrollmentSlots}
+                          disabled={busy}
+                          students={data.students.filter(
+                            (s: Row) =>
+                              !data.enrollments.some(
+                                (e: Row) =>
+                                  e.class_id === dialog.item!.id &&
+                                  e.student_id === s.id &&
+                                  !e.ended_at,
+                              ),
+                          )}
+                        />
                         <p className="form-hint">
                           Học sinh mới không được giao lại các bài tập cũ.
                         </p>
@@ -2851,12 +2867,23 @@ export default function Dashboard({ initial }: { initial: Data }) {
                         >
                           Hủy
                         </button>
-                        <button className="button primary" disabled={busy}>
+                        <button
+                          className="button primary"
+                          disabled={
+                            busy ||
+                            (dialog.type === "enroll" &&
+                              (!enrollmentSelection.length ||
+                                enrollmentSelection.length > enrollmentSlots ||
+                                enrollmentSelection.length > 500))
+                          }
+                        >
                           {busy
                             ? "Đang lưu…"
                             : dialog.type === "submit"
                               ? "Nộp bài"
-                              : "Lưu thay đổi"}
+                              : dialog.type === "enroll"
+                                ? `Thêm ${enrollmentSelection.length} học sinh`
+                                : "Lưu thay đổi"}
                         </button>
                       </div>
                     )}

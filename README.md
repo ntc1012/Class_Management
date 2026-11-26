@@ -42,6 +42,8 @@ Không có tài khoản `admin@classflow.local` hoặc `linh@classflow.local` đ
 
 ## Kiểm thử mã nguồn
 
+Trong chi tiết lớp, chọn **Thêm học sinh** để tìm kiếm và chọn nhiều hồ sơ cùng lúc. Nút **Chọn tất cả** áp dụng cho kết quả đang hiển thị; lựa chọn được giữ khi đổi từ khóa tìm kiếm. Hệ thống kiểm tra sĩ số và quyền truy cập trước khi lưu cả nhóm; hồ sơ đã có trong lớp được bỏ qua khi gửi lại.
+
 Yêu cầu Node.js 24+. Các lệnh dành cho phát triển/CI:
 
 ```text

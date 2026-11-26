@@ -2978,3 +2978,11 @@ td code {
 }
 
 .account-loading { min-height: 100svh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+.student-picker { display: grid; gap: 12px; }
+.student-picker-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.student-picker-list { max-height: 300px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 6px; }
+.student-picker-list .student-picker-row { display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 10px; cursor: pointer; border-radius: 5px; }
+.student-picker-row:hover { background: #f1f7f5; }
+.student-picker-row input[type="checkbox"] { width: 18px; height: 18px; min-height: 18px; padding: 0; flex-shrink: 0; accent-color: var(--primary, #11776c); }
+.student-picker-row span { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.student-picker-row small { color: var(--muted); font-weight: 400; }
