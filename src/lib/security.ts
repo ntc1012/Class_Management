@@ -83,9 +83,7 @@ export async function startSession(userId: string) {
   );
   (await cookies()).set("classflow_session", token, {
     httpOnly: true,
-    secure:
-      process.env.NODE_ENV === "production" &&
-      !process.env.ALLOW_LOCAL_PRODUCTION,
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: 7 * 86400,

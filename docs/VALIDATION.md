@@ -1,10 +1,10 @@
-# Kiểm chứng bản local — 26/11/2026
+# Kiểm chứng mã nguồn — 26/11/2026
 
 - TypeScript: đạt.
 - Build Next.js production (webpack): đạt.
-- Kiểm thử nghiệp vụ: 20/20 đạt; bao gồm mật khẩu, kích hoạt một lần, cách ly trung tâm/giáo viên, lịch đơn/chuỗi, khóa buổi, học phí, thanh toán một phần/chống trùng, chữ ký webhook giả/hợp lệ, tài khoản ảo, đổi khóa, chặn thu tiền khi chưa xác minh, bài tập mới/cũ, phiên bản bài nộp và quyền tải file.
-- Kiểm thử HTTP trên bản production chạy local: đăng nhập, phân quyền, chống yêu cầu khác nguồn, QR mô phỏng, cập nhật công nợ, giao dịch lặp, nộp bài, upload/download ảnh và kiểm tra quyền, xuất CSV, endpoint được bảo vệ, HTML và tài nguyên JS/CSS.
-- Sao lưu SQLite: đã tạo bản sao và kiểm tra `PRAGMA integrity_check` trả về `ok`; bản sao có lịch sử giao dịch.
-- Dockerfile và workflow CI được chuẩn bị nhưng chưa chạy Docker hoặc CI từ xa trong phiên này.
-- Chưa kiểm tra trực quan desktop/mobile: công cụ điều khiển trình duyệt không kết nối được.
-- Chưa chạy PostgreSQL/S3 hoặc giao dịch ngân hàng thật. Không có tài khoản dịch vụ, secret và hạ tầng production được cấu hình trong phiên này.
+- 31 kiểm thử đạt: nghiệp vụ, xác thực, cách ly dữ liệu, thanh toán, origin Vercel, chẩn đoán health và tạo admin một lần.
+- Thiết lập admin: từ chối thiếu/sai mã, kiểm tra mật khẩu xác nhận, băm mật khẩu, transaction chỉ cho một request đồng thời thành công, khóa vĩnh viễn bootstrap sau lần đầu.
+- Database và file SQLite chỉ dùng bên trong test. Runtime sản phẩm bắt buộc PostgreSQL; upload sản phẩm bắt buộc kho S3 riêng tư.
+- Trang `/setup` và endpoint `/api/setup` được build cho Vercel; không có lệnh seed hay tài khoản sản phẩm mẫu.
+- Chưa tự thao tác tài khoản Vercel/Neon, tạo admin thật hoặc chạy giao dịch ngân hàng thật trong phiên này. Người dùng tự nhập mã và mật khẩu trên website.
+- Chưa kiểm thử trực quan trang setup vì công cụ điều khiển trình duyệt không khả dụng; đã kiểm tra TypeScript, build và nghiệp vụ backend.

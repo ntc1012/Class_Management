@@ -70,6 +70,7 @@ const labels: Record<string, string> = {
   partial: "Đã trả một phần",
 };
 const actionNames: Record<string, string> = {
+  "owner.setup": "Thiết lập admin đầu tiên",
   "student.create": "Thêm học sinh",
   "student.update": "Sửa hồ sơ học sinh",
   "student.import": "Nhập danh sách học sinh",
@@ -954,8 +955,8 @@ export default function Dashboard({ initial }: { initial: Data }) {
             <div className="demo-banner">
               <ShieldCheck size={16} />
               <span>
-                Chế độ thử nghiệm · Dữ liệu mẫu và thanh toán mô phỏng, không
-                chuyển tiền thật.
+                Chế độ thử nghiệm thanh toán · Nhận tiền mô phỏng, không chuyển
+                tiền thật.
               </span>
               <button onClick={() => navigate("settings")}>Xem cấu hình</button>
             </div>

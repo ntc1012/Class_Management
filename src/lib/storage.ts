@@ -43,11 +43,8 @@ async function put(key: string, body: Buffer, mime: string) {
       }),
     );
   else {
-    if (
-      process.env.NODE_ENV === "production" &&
-      !process.env.ALLOW_LOCAL_PRODUCTION
-    )
-      throw new AppError("Production cần kho S3 riêng tư.");
+    if (process.env.NODE_ENV !== "test")
+      throw new AppError("Chưa cấu hình kho file S3 riêng tư cho ứng dụng.");
     const p = localPath(key);
     await mkdir(path.dirname(p), { recursive: true });
     await writeFile(p, body);
@@ -146,6 +143,8 @@ export async function download(a: Actor, fileId: string) {
   await assignmentAccess(a, f.assignment_id);
   if (a.role === "student" && f.submission_id && f.uploaded_by !== a.id)
     throw new AppError("Bạn không có quyền tải bài của học sinh khác.", 403);
+  if (!process.env.S3_BUCKET && process.env.NODE_ENV !== "test")
+    throw new AppError("Chưa cấu hình kho file S3 riêng tư cho ứng dụng.");
   const data = process.env.S3_BUCKET
     ? await (
         await s3().send(

@@ -20,9 +20,5 @@ try {
 } catch (error) {
   if (error.code !== "ENOENT") throw error;
 }
-process.env.SQLITE_PATH = path.resolve(
-  root,
-  process.env.SQLITE_PATH || "data/classflow.sqlite",
-);
 process.env.HOSTNAME = process.env.HOSTNAME || "127.0.0.1";
 await import(pathToFileURL(path.join(standalone, "server.js")).href);

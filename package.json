@@ -11,11 +11,7 @@
     "start": "node --env-file-if-exists=.env.local scripts/start.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
-    "test:http": "node tests/http.integration.mjs",
-    "db:seed": "node --env-file-if-exists=.env.local --import tsx scripts/seed.ts",
-    "db:backup": "node --env-file-if-exists=.env.local --import tsx scripts/backup.ts",
-    "db:migrate": "node --env-file-if-exists=.env.local --import tsx scripts/migrate.ts",
-    "db:owner": "node --env-file-if-exists=.env.local --import tsx scripts/create-owner.ts"
+    "db:migrate": "node --env-file-if-exists=.env.local --import tsx scripts/migrate.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",

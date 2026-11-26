@@ -18,11 +18,8 @@ const txContext = new AsyncLocalStorage<{
 const postgres = () => Boolean(process.env.DATABASE_URL);
 function sqlite() {
   if (!globals.cfSqlite) {
-    if (
-      process.env.NODE_ENV === "production" &&
-      !process.env.ALLOW_LOCAL_PRODUCTION
-    )
-      throw new Error("Production requires DATABASE_URL");
+    if (process.env.NODE_ENV !== "test")
+      throw new Error("ClassFlow requires a PostgreSQL DATABASE_URL");
     const target = path.resolve(
       process.env.SQLITE_PATH || "data/classflow.sqlite",
     );
@@ -165,6 +162,7 @@ export async function initialize() {
   return globals.cfInit;
 }
 const schema = `
+CREATE TABLE IF NOT EXISTS app_bootstrap (id TEXT PRIMARY KEY, completed_at TEXT);
 CREATE TABLE IF NOT EXISTS centers (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, center_id TEXT NOT NULL REFERENCES centers(id), email TEXT NOT NULL UNIQUE, name TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','teacher','student')), password_hash TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS auth_sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires_at TEXT NOT NULL);

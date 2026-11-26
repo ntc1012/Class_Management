@@ -23,6 +23,7 @@ import type { Actor } from "../src/lib/types";
 import { parseStudentsCsv } from "../src/lib/csv";
 
 process.env.SQLITE_PATH = `./data/tests-${randomUUID()}.sqlite`;
+Object.assign(process.env, { NODE_ENV: "test" });
 delete process.env.DATABASE_URL;
 process.env.PAYMENT_MODE = "demo";
 const teacher: Actor = {

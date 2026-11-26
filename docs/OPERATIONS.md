@@ -1,69 +1,56 @@
-# Vận hành và triển khai
+# Vận hành ClassFlow trên Vercel
 
-## Môi trường
+## Hạ tầng
 
-Vercel: `vercel.json` chọn preset Next.js và thư mục đầu ra `.next`, ghi đè cấu hình `public` của project nếu project được import trước khi có mã ứng dụng. Root Directory phải là thư mục chứa `package.json` (gốc repository). Không dùng `public` làm Output Directory cho ứng dụng này.
+- Bản sản phẩm dùng PostgreSQL qua `DATABASE_URL`. SQLite chỉ dành cho test nội bộ.
+- Kho file là S3 riêng tư. Không lưu file bài tập trong filesystem của Vercel.
+- Không có tài khoản/mật khẩu admin hoặc giáo viên mặc định. Admin đầu tiên tạo tại `/setup`.
+- Biến môi trường áp dụng cho deployment tiếp theo; redeploy sau khi thay đổi.
 
-- Local: Node.js 24+, SQLite bền vững tại `data/classflow.sqlite`, file tại `data/uploads`, thanh toán mô phỏng.
-- Production: `DATABASE_URL` PostgreSQL, kho S3 riêng tư, HTTPS và `APP_URL` đúng tên miền. Không dùng dữ liệu mẫu hoặc mật khẩu demo.
-- Local và production phải dùng database, bucket, khóa thanh toán và khóa mã hóa khác nhau.
-- Không đưa `.env.local`, `data/`, `backups/` hoặc file xuất chứa mã kích hoạt lên Git.
-- `ALLOW_LOCAL_PRODUCTION=1` chỉ dành cho kiểm tra bản build ở máy local; không bật khi đưa lên Internet.
+## Tạo admin một lần
 
-## Cấu hình bản thử trên Vercel
+Mở `/setup`, tạo mã ngẫu nhiên tại trình duyệt và thêm mã vào biến `ADMIN_SETUP_TOKEN` của Vercel Production. Mã dài tối thiểu 32 ký tự, khuyến nghị dùng mã hex 64 ký tự do trang tạo ra. Không gửi mã qua URL hay chia sẻ trong chat.
 
-Đặt `APP_URL=https://classmanagement-omega.vercel.app`, `DATABASE_URL` vào PostgreSQL của project và `PAYMENT_MODE=demo`. Chế độ demo được hỗ trợ ngay cả khi `NODE_ENV=production`, không cần và không được bật `ALLOW_LOCAL_PRODUCTION`. Nếu production không đặt `PAYMENT_MODE` hoặc đặt sai, tính năng tạo yêu cầu thanh toán bị tắt thay vì tự chuyển sang thu tiền thật.
+Sau redeploy, nhập mã, tên trung tâm, họ tên, email, mật khẩu và xác nhận mật khẩu. API xác minh mã ở server trước khi truy cập database; mật khẩu được scrypt hash. Thao tác tạo trung tâm, admin, nhật ký và khóa thiết lập chạy trong một transaction.
 
-Đặt `ENCRYPTION_KEY` và `CRON_SECRET` bằng secret ngẫu nhiên riêng. Khi có kho file S3, bổ sung các biến `S3_*` trong `.env.example`. Không có kho file thì chưa thể nhận file bài tập trên Vercel. Sau khi kết nối database, chạy migrate, tạo tài khoản chủ trung tâm riêng rồi redeploy để áp dụng các biến môi trường. Không seed tài khoản/mật khẩu demo công khai vào bản Internet.
+Khóa singleton trong PostgreSQL ngăn hai request đồng thời tạo hai admin. Sau khi hoàn tất, không thể dùng lại trang này để thêm admin, kể cả khi tài khoản ban đầu bị xóa. Nếu đã có owner trong database, API cũng từ chối bootstrap. Có thể xóa `ADMIN_SETUP_TOKEN` và redeploy sau khi tạo thành công.
 
-## Khởi tạo production
+Đăng nhập rồi mở Giáo viên để thêm tên/email, cấp mã kích hoạt riêng. Giáo viên tự đặt mật khẩu; không dùng chung mật khẩu admin.
 
-1. Cấp PostgreSQL và bucket S3 private. Điền các biến trong `.env.example` vào secret của hosting hoặc `.env.local` ở máy quản trị.
-2. Tạo `ENCRYPTION_KEY`: 32 byte ngẫu nhiên biểu diễn bằng 64 ký tự hex. Có thể dùng `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`, lưu kết quả vào secret manager.
-3. Đặt `PAYMENT_MODE=live`, `APP_URL=https://ten-mien-cua-ban`, `CRON_SECRET` ngẫu nhiên đủ dài.
-4. Chạy `npm ci`, `npm run db:migrate`.
-5. Đặt `OWNER_NAME`, `OWNER_EMAIL`, `OWNER_PASSWORD` (ít nhất 12 ký tự), `CENTER_NAME` trong môi trường tiến trình, chạy `npm run db:owner`. Xóa mật khẩu khởi tạo khỏi môi trường quản trị sau đó. Không đưa thông tin thật vào shell history hoặc Git.
-6. Chạy `npm run build`, `npm start`, hoặc build Dockerfile. Nếu dùng Vercel, chọn Node.js 24 và cấu hình cùng các secret. Đây là server app, không thể static export.
-7. Mỗi giáo viên xác minh kênh thanh toán với nhà cung cấp, kiểm tra hỗ trợ ngân hàng và tài khoản nhận của mình. Điền đúng bộ Client ID/API Key/Checksum Key trong Cài đặt. Bộ khóa được AES-256-GCM mã hóa trong database.
-8. Giáo viên chọn “Đăng ký webhook của tôi”. Đường dẫn: `/api/payments/webhook/<teacher-id>`. Kiểm tra tài khoản ngân hàng khớp tài khoản kênh payOS.
-9. Thử giao dịch nhỏ trong quy trình do chủ tài khoản kiểm soát, kiểm tra giao dịch lặp, thiếu tiền, thừa tiền và đối soát sau mất kết nối. Không dùng QR demo để chuyển tiền.
+## Các biến môi trường
 
-Việc thêm tài khoản ngân hàng vào biểu mẫu không đồng nghĩa đã kết nối nhận giao dịch. Chỉ đánh giá kết nối thật hoàn tất sau khi nhà cung cấp cấp quyền và chạy giao dịch kiểm chứng.
+| Biến                                       | Mục đích                                                                 |
+| ------------------------------------------ | ------------------------------------------------------------------------ |
+| `DATABASE_URL`                             | PostgreSQL Neon, do integration cấp                                      |
+| `APP_URL`                                  | `https://classmanagement-omega.vercel.app`                               |
+| `ADMIN_SETUP_TOKEN`                        | Bật tạo admin một lần; xóa sau khi hoàn tất                              |
+| `PAYMENT_MODE`                             | `demo`, `live`; thiếu/sai trên production thì tắt tạo yêu cầu thanh toán |
+| `ENCRYPTION_KEY`                           | 64 ký tự hex của khóa ngẫu nhiên 32 byte                                 |
+| `CRON_SECRET`                              | Secret riêng cho scheduler                                               |
+| `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`    | Kho file riêng tư                                                        |
+| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Thông tin truy cập kho file                                              |
+| `MAX_FILE_MB`, `TEACHER_STORAGE_MB`        | Mặc định 10 MB/file, 500 MB/giáo viên                                    |
 
-Khi xác nhận webhook, ứng dụng đối chiếu tài khoản chính trả về từ nhà cung cấp. Mỗi yêu cầu thanh toán lưu riêng tài khoản nhận do nhà cung cấp trả về để hỗ trợ tài khoản ảo (VA), vốn có thể khác số tài khoản chính. Thay đổi cấu hình ngân hàng sẽ yêu cầu xác minh lại.
+Không đặt các secret dưới tên có tiền tố `NEXT_PUBLIC_`. Không đưa file `.env`, bản sao database hoặc mã kích hoạt lên Git.
 
-Tài liệu công khai được kiểm tra chưa đủ để xác nhận payOS hỗ trợ đúng loại tài khoản Agribank/Techcombank của giáo viên. Cần xác minh trực tiếp với nhà cung cấp; không coi adapter này là kết nối hai ngân hàng đã hoàn tất. Nguồn: https://payos.vn/docs/huong-dan-su-dung/ket-noi-tai-khoan-ngan-hang/ và https://payos.vn/docs/cau-hoi-thuong-gap/.
+## Thanh toán
 
-## Lịch chạy tự động
+Giữ `PAYMENT_MODE=demo` trong giai đoạn thử nghiệm. QR demo không chuyển tiền thật; việc mô phỏng nhận tiền chỉ dành cho admin/giáo viên, có nhật ký.
 
-Gọi `GET /api/cron` bằng scheduler có header `Authorization: Bearer <CRON_SECRET>`, ví dụ mỗi 15–60 phút tùy gói hosting. Không đặt secret trong URL.
+Khi bật thật: xác minh với nhà cung cấp loại tài khoản Agribank/Techcombank được hỗ trợ, lưu Client ID/API Key/Checksum Key trong Cài đặt và đăng ký webhook. Khóa được AES-256-GCM mã hóa; sao lưu `ENCRYPTION_KEY` trong secret manager riêng.
 
-Tác vụ chốt học phí tháng trước cho từng giáo viên nếu mọi buổi đã khóa/hủy; thử lại an toàn vì có khóa duy nhất. Nếu còn buổi chưa khóa, kết quả nêu lỗi để giáo viên hoàn tất. Đồng thời đối soát các yêu cầu thanh toán của bảy ngày gần nhất. Giao dịch cũ hơn có thể đối soát thủ công tại chi tiết học phí.
+Webhook: `/api/payments/webhook/<teacher-id>`. Tài khoản chính được đối chiếu khi kết nối; tài khoản ảo (VA) được lưu riêng theo yêu cầu thanh toán. Mỗi yêu cầu giữ bản khóa kết nối đã mã hóa để xác minh giao dịch khi giáo viên thay khóa sau này. Không dùng URL quay về trình duyệt làm bằng chứng trả tiền.
 
-## Sao lưu và khôi phục
+Tài liệu nhà cung cấp: https://payos.vn/docs/huong-dan-su-dung/ket-noi-tai-khoan-ngan-hang/ và https://payos.vn/docs/cau-hoi-thuong-gap/.
 
-### Local SQLite
+## Scheduler và sao lưu
 
-Chạy `npm run db:backup`: dùng online backup API nên không bỏ sót WAL. Sao lưu riêng `data/uploads` cùng thời điểm hoặc dừng ứng dụng để sao lưu cả bộ nhất quán. File database không chứa dữ liệu nhị phân của bài tập.
+Scheduler gọi `GET /api/cron` với header `Authorization: Bearer <CRON_SECRET>`, tần suất phù hợp gói hosting. Tác vụ chốt tháng trước khi mọi buổi đã khóa/hủy, và đối soát yêu cầu bảy ngày gần nhất. Khoản cũ có thể đối soát tại màn hình học phí.
 
-Khôi phục: dừng ứng dụng, sao lưu trạng thái hiện tại, chọn bản database và file tương ứng, đặt `SQLITE_PATH` vào bản database phục hồi rồi khởi động. Có thể kiểm tra bản sao tại cổng khác trước khi thay dữ liệu chính. Kiểm tra số lượng giao dịch, học sinh, công nợ và tải một file thử.
+Dùng backup/PITR của nhà cung cấp PostgreSQL; phục hồi vào database mới rồi đối chiếu học sinh, khoản thu và giao dịch trước khi chuyển kết nối. Backup/versioning S3 phải giữ file còn được bản database phục hồi tham chiếu. Lịch sử thu tiền chưa có tác vụ tự động xóa; yêu cầu sản phẩm là giữ ít nhất ba tháng.
 
-### PostgreSQL / S3
+## Giới hạn kiểm chứng
 
-Dùng backup tự động/PITR của nhà cung cấp và `pg_dump --format=custom` từ môi trường có quyền. `DATABASE_URL` qua secret, không in lên log. Khôi phục bằng `pg_restore` vào database mới, chuyển kết nối sau khi đối chiếu. Bật versioning/lifecycle phù hợp trên bucket; không xóa file mà bản sao database còn tham chiếu tới.
-
-Lưu `ENCRYPTION_KEY` dự phòng trong secret manager riêng. Mất khóa sẽ không đọc được các khóa kết nối ngân hàng đã mã hóa. Muốn đổi khóa phải giải mã và mã hóa lại dữ liệu, không chỉ thay biến môi trường.
-
-## Theo dõi
-
-- Kiểm tra lỗi scheduler, webhook và giao dịch chờ đối soát; cảnh báo dung lượng/file và chi phí provider.
-- Log không ghi mật khẩu, mã kích hoạt, API key hoặc payload webhook thô.
-- Không có công việc tự động xóa lịch sử thu tiền. Tối thiểu ba tháng là yêu cầu sản phẩm hiện tại, không phải kết luận về thời hạn lưu trữ theo pháp luật.
-- Trước sử dụng dữ liệu thật, chủ trung tâm cần rà soát quy trình bảo vệ dữ liệu và lịch lưu giữ phù hợp.
-
-## Giới hạn đã biết
-
-- Chưa kiểm chứng kết nối tiền thật Agribank/Techcombank hoặc PostgreSQL/S3 trong môi trường này vì chưa có hạ tầng và thông tin xác thực.
-- Đã kiểm thử SQLite và API local; chưa kiểm tra giao diện bằng trình duyệt do công cụ trình duyệt của phiên làm việc không khả dụng.
-- Schema tự tạo idempotent cho bản đầu; thay đổi schema tương lai cần migration có phiên bản và diễn tập trên bản sao trước production.
-- Tệp được tải qua máy chủ có kiểm tra quyền. Với tải lớn cần thêm quét mã độc chuyên dụng và cân nhắc URL S3 ký hạn ngắn để giảm tải máy chủ.
+- Chưa thao tác trực tiếp Neon/Vercel của người dùng qua connector trong phiên này; trạng thái trên web do người dùng kiểm tra.
+- Giao dịch tiền thật và kho S3 chưa được kiểm chứng bằng tài khoản thực tế.
+- Schema bản đầu tạo idempotent; thay đổi tiếp theo cần migration có phiên bản và kiểm thử trên bản sao.
