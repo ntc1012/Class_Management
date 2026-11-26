@@ -2,6 +2,8 @@
 
 ## Môi trường
 
+Vercel: `vercel.json` chọn preset Next.js và thư mục đầu ra `.next`, ghi đè cấu hình `public` của project nếu project được import trước khi có mã ứng dụng. Root Directory phải là thư mục chứa `package.json` (gốc repository). Không dùng `public` làm Output Directory cho ứng dụng này.
+
 - Local: Node.js 24+, SQLite bền vững tại `data/classflow.sqlite`, file tại `data/uploads`, thanh toán mô phỏng.
 - Production: `DATABASE_URL` PostgreSQL, kho S3 riêng tư, HTTPS và `APP_URL` đúng tên miền. Không dùng dữ liệu mẫu hoặc mật khẩu demo.
 - Local và production phải dùng database, bucket, khóa thanh toán và khóa mã hóa khác nhau.
