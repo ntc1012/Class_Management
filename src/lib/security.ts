@@ -9,6 +9,7 @@ import {
 import { cookies } from "next/headers";
 import { one, query, transaction, now, lock } from "./db";
 import { AppError, type Actor } from "./types";
+import { isTrustedOrigin } from "./origin";
 
 export const digest = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -155,10 +156,6 @@ export function decrypt(value: string) {
   );
 }
 export function checkOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-  const allowed = process.env.APP_URL
-    ? new URL(process.env.APP_URL).origin
-    : `${new URL(request.url).protocol}//${request.headers.get("host") || new URL(request.url).host}`;
-  if (!origin || origin !== allowed)
+  if (!isTrustedOrigin(request))
     throw new AppError("Nguồn yêu cầu không hợp lệ.", 403);
 }
