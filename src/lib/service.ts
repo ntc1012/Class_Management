@@ -160,7 +160,7 @@ export async function createClass(a: Actor, input: unknown) {
     .parse(input);
   const teacher = await teacherFor(a, d.teacher_id),
     classId = id();
-  await transaction(async () => {
+  const createdClass = await transaction(async () => {
     await query(
       "INSERT INTO classes(id,center_id,teacher_id,name,subject,level,room,capacity,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
       [
@@ -176,8 +176,14 @@ export async function createClass(a: Actor, input: unknown) {
       ],
     );
     await audit(a, "class.create", "class", classId);
+    const record = await one(
+      "SELECT c.*,u.name teacher_name,0 AS student_count FROM classes c JOIN users u ON u.id=c.teacher_id WHERE c.id=? AND c.center_id=?",
+      [classId, a.center_id],
+    );
+    if (!record) throw new AppError("Chưa thể đọc lại lớp vừa tạo.", 500);
+    return record;
   });
-  return { id: classId };
+  return { id: classId, class: createdClass };
 }
 export async function enroll(a: Actor, input: unknown) {
   staff(a);

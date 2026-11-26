@@ -37,6 +37,11 @@ import {
   AlertCircle,
 } from "lucide-react";
 import type { Row } from "@/lib/types";
+import {
+  createSnapshotLoader,
+  addCreatedClass,
+  type SnapshotLoader,
+} from "@/lib/client-snapshot";
 
 type Data = Record<string, any>;
 type Dialog = { type: string; item?: Row };
@@ -227,6 +232,26 @@ export default function Dashboard({ initial }: { initial: Data }) {
     Record<string, string>
   >({});
   const formRef = useRef<HTMLFormElement>(null);
+  const mutating = useRef(false);
+  const snapshotLoader = useRef<SnapshotLoader<Data> | null>(null);
+  if (!snapshotLoader.current)
+    snapshotLoader.current = createSnapshotLoader(async () => {
+      const response = await fetch("/api/data", { cache: "no-store" });
+      if (response.status === 401) {
+        window.location.assign("/login");
+        throw new Error("Phiên đăng nhập đã hết hạn.");
+      }
+      const next = await response.json().catch(() => null);
+      if (!response.ok || !next || !Array.isArray(next.classes))
+        throw new Error(
+          next?.error || "Chưa thể cập nhật danh sách mới. Vui lòng thử lại.",
+        );
+      if (next.actor?.id !== initial.actor.id) {
+        window.location.assign("/");
+        throw new Error("Tài khoản đăng nhập đã thay đổi.");
+      }
+      return next as Data;
+    }, setData);
   const student = data.actor.role === "student",
     owner = data.actor.role === "owner";
   const name = data.actor.name.split(" ").slice(-1)[0];
@@ -244,18 +269,16 @@ export default function Dashboard({ initial }: { initial: Data }) {
           )),
     );
   async function refresh() {
-    const r = await fetch("/api/data", { cache: "no-store" });
-    if (r.status === 401) {
-      window.location.assign("/login");
-      return;
-    }
-    if (r.ok) setData(await r.json());
+    return snapshotLoader.current!.refresh();
   }
   useEffect(() => {
     const timer = setInterval(() => {
-      void refresh();
+      if (!mutating.current) void refresh().catch(() => {});
     }, 25000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      snapshotLoader.current!.invalidate();
+    };
   }, []);
   useEffect(() => {
     if (toast) {
@@ -322,6 +345,8 @@ export default function Dashboard({ initial }: { initial: Data }) {
   }
   async function run(action: string, values: Row = {}, close = true) {
     setBusy(true);
+    mutating.current = true;
+    snapshotLoader.current!.invalidate();
     setError("");
     try {
       const value = await api(action, values);
@@ -333,6 +358,7 @@ export default function Dashboard({ initial }: { initial: Data }) {
       setError(e instanceof Error ? e.message : "Không thể kết nối.");
       return null;
     } finally {
+      mutating.current = false;
       setBusy(false);
     }
   }
@@ -353,6 +379,8 @@ export default function Dashboard({ initial }: { initial: Data }) {
     event.preventDefault();
     if (!dialog) return;
     setBusy(true);
+    mutating.current = true;
+    snapshotLoader.current!.invalidate();
     setError("");
     const form = new FormData(event.currentTarget),
       values: Row = Object.fromEntries(form),
@@ -366,6 +394,17 @@ export default function Dashboard({ initial }: { initial: Data }) {
           break;
         case "class":
           response = await api("class.create", values);
+          if (response.class) {
+            setData((current) =>
+              addCreatedClass(
+                { ...current, classes: current.classes },
+                response.class,
+              ),
+            );
+            setSearch("");
+            setSelectedClass("");
+            setTab("classes");
+          }
           break;
         case "student-edit":
           response = await api("student.update", {
@@ -491,12 +530,37 @@ export default function Dashboard({ initial }: { initial: Data }) {
           break;
         }
       }
-      await refresh();
+      try {
+        await refresh();
+      } catch (syncError) {
+        if (dialog.type === "class" && response.class) {
+          setDialog(null);
+          setToast(`Đã tạo lớp ${response.class.name}.`);
+          setError(
+            "Lớp đã được lưu. Một số dữ liệu khác chưa đồng bộ được; hệ thống sẽ thử tải lại.",
+          );
+          return;
+        }
+        throw syncError;
+      }
+      if (dialog.type === "class" && response.class)
+        setData((current) =>
+          addCreatedClass(
+            { ...current, classes: current.classes },
+            response.class,
+          ),
+        );
       if (!["student", "teacher"].includes(dialog.type)) setDialog(null);
-      if (dialog.type !== "generate") setToast("Đã lưu thay đổi.");
+      if (dialog.type !== "generate")
+        setToast(
+          dialog.type === "class"
+            ? `Đã tạo lớp ${response.class?.name || ""}.`
+            : "Đã lưu thay đổi.",
+        );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Có lỗi xảy ra.");
     } finally {
+      mutating.current = false;
       setBusy(false);
     }
   }

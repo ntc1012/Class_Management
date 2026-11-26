@@ -171,6 +171,23 @@ describe(
       assert.equal(outside.classes.length, 0);
       assert.equal((await snapshot(student)).students.length, 1);
     });
+    it("returns the saved class for immediate display and binds it to the creating teacher", async () => {
+      const created = await service.createClass(otherTeacher, {
+        name: "Teacher 2 new class",
+        subject: "Math",
+        teacher_id: teacher.id,
+      });
+      assert.equal(created.class.id, created.id);
+      assert.equal(created.class.teacher_id, otherTeacher.id);
+      assert.equal(created.class.teacher_name, otherTeacher.name);
+      assert.equal(Number(created.class.student_count), 0);
+      assert.ok(
+        (await snapshot(otherTeacher)).classes.some((c) => c.id === created.id),
+      );
+      assert.ok(
+        !(await snapshot(teacher)).classes.some((c) => c.id === created.id),
+      );
+    });
     it("rejects duplicate enrollment", async () => {
       await assert.rejects(
         service.enroll(teacher, { class_id: classId, student_id: studentId }),
