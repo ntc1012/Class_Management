@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import type { Row } from "@/lib/types";
 import StudentPicker from "./student-picker";
+import { recentAttendanceFirst } from "@/lib/attendance-view";
 import {
   createSnapshotLoader,
   addCreatedClass,
@@ -76,7 +77,7 @@ const labels: Record<string, string> = {
   present: "Có mặt",
   excused: "Vắng có phép",
   absent: "Vắng không phép",
-  scheduled: "Chưa khóa",
+  scheduled: "Chưa điểm danh",
   locked: "Đã khóa",
   cancelled: "Đã hủy",
   paid: "Đã thanh toán",
@@ -149,6 +150,26 @@ function Badge({
     <span className={`badge ${status || ""}`}>
       {children || labels[status || ""] || status}
     </span>
+  );
+}
+function SessionBadge({ session }: { session: Row }) {
+  const cancelled = session.status === "cancelled";
+  return (
+    <Badge
+      status={
+        cancelled
+          ? "cancelled"
+          : session.attendance_saved
+            ? "present"
+            : "scheduled"
+      }
+    >
+      {cancelled
+        ? "Đã hủy"
+        : session.attendance_saved
+          ? "Đã điểm danh"
+          : "Chưa điểm danh"}
+    </Badge>
   );
 }
 function Empty({
@@ -568,7 +589,6 @@ export default function Dashboard({ initial }: { initial: Data }) {
           response = await api("attendance.save", {
             session_id: item!.id,
             entries,
-            lock: values.lock === "yes",
           });
           break;
         }
@@ -746,13 +766,13 @@ export default function Dashboard({ initial }: { initial: Data }) {
                 {s.room || "Chưa có phòng"}
               </span>
             </div>
-            <Badge status={s.status} />
-            {!student && s.status === "scheduled" && (
+            <SessionBadge session={s} />
+            {!student && s.status !== "cancelled" && (
               <button
-                className="button small"
+                className={`button small ${s.attendance_saved ? "attendance-saved" : ""}`}
                 onClick={() => open("attendance", s)}
               >
-                Điểm danh
+                {s.attendance_saved ? "Sửa điểm danh" : "Điểm danh"}
               </button>
             )}
           </div>
@@ -1481,7 +1501,7 @@ export default function Dashboard({ initial }: { initial: Data }) {
                     Lịch học tháng {calendarDate.slice(5, 7)}/
                     {calendarDate.slice(0, 4)}
                   </h2>
-                  <p>Giờ Việt Nam · Buổi đã khóa được giữ nguyên</p>
+                  <p>Giờ Việt Nam · Trạng thái xanh khi đã lưu điểm danh</p>
                 </div>
                 <div className="calendar-controls">
                   <button
@@ -1550,7 +1570,7 @@ export default function Dashboard({ initial }: { initial: Data }) {
                         {sessions.map((s: Row) => (
                           <button
                             key={s.id}
-                            className={`calendar-event ${s.status}`}
+                            className={`calendar-event ${s.status} ${s.attendance_saved && s.status !== "cancelled" ? "attendance-saved" : ""}`}
                             onClick={() =>
                               open(student ? "session-detail" : "session", s)
                             }
@@ -1560,8 +1580,8 @@ export default function Dashboard({ initial }: { initial: Data }) {
                             </strong>
                             <small>
                               {s.room || "Lớp học"}
-                              {s.status === "locked"
-                                ? " · Đã khóa"
+                              {s.attendance_saved && s.status !== "cancelled"
+                                ? " · Đã điểm danh"
                                 : s.status === "cancelled"
                                   ? " · Đã hủy"
                                   : ""}
@@ -1591,7 +1611,7 @@ export default function Dashboard({ initial }: { initial: Data }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered([...data.sessions].reverse(), [
+                    {filtered(recentAttendanceFirst(data.sessions, today()), [
                       "class_name",
                       "date",
                     ]).map((s: Row) => {
@@ -1619,16 +1639,16 @@ export default function Dashboard({ initial }: { initial: Data }) {
                             )}
                           </td>
                           <td>
-                            <Badge status={s.status} />
+                            <SessionBadge session={s} />
                           </td>
                           <td>
                             {!student && s.status !== "cancelled" && (
                               <button
-                                className="button small"
+                                className={`button small ${s.attendance_saved ? "attendance-saved" : ""}`}
                                 onClick={() => open("attendance", s)}
                               >
-                                {s.status === "locked"
-                                  ? "Xem điểm danh"
+                                {s.attendance_saved
+                                  ? "Sửa điểm danh"
                                   : "Điểm danh"}
                               </button>
                             )}
@@ -2451,9 +2471,9 @@ export default function Dashboard({ initial }: { initial: Data }) {
                           defaultValue={dialog.item!.teacher_id || ""}
                         />
                         <p className="form-hint">
-                          Chỉ cập nhật giáo viên của các buổi chưa khóa. Điểm
-                          danh đã khóa, khoản thu và lịch sử thanh toán được giữ
-                          nguyên.
+                          Chỉ cập nhật giáo viên của các buổi chưa điểm danh.
+                          Điểm danh đã lưu, khoản thu và lịch sử thanh toán được
+                          giữ nguyên.
                         </p>
                       </>
                     )}
@@ -2585,9 +2605,9 @@ export default function Dashboard({ initial }: { initial: Data }) {
                         />
                         <TeacherSelect />
                         <div className="alert info">
-                          Chỉ chốt từ ngày cuối tháng, sau khi tất cả buổi học
-                          đã khóa hoặc hủy. Thao tác lặp lại không tạo khoản thu
-                          trùng.
+                          Chỉ chốt từ ngày cuối tháng, sau khi các buổi đã kết
+                          thúc và được điểm danh đầy đủ hoặc đã hủy. Thao tác
+                          lặp lại không tạo khoản thu trùng.
                         </div>
                       </>
                     )}
@@ -2797,13 +2817,13 @@ export default function Dashboard({ initial }: { initial: Data }) {
                             {fmt(dialog.item!.date)} · {dialog.item!.start_time}{" "}
                             – {dialog.item!.end_time}
                           </span>
-                          <Badge status={dialog.item!.status} />
+                          <SessionBadge session={dialog.item!} />
                         </div>
-                        {dialog.item!.status === "locked" && (
+                        {Boolean(dialog.item!.invoiced) && (
                           <div className="alert info">
-                            <LockKeyhole size={17} />
-                            Buổi đã khóa. Chủ trung tâm có thể điều chỉnh học
-                            phí riêng.
+                            Sửa điểm danh không thay đổi khoản học phí đã chốt.
+                            Chủ trung tâm có thể tạo điều chỉnh học phí có lý
+                            do.
                           </div>
                         )}
                         <div className="attendance-table">
@@ -2824,9 +2844,7 @@ export default function Dashboard({ initial }: { initial: Data }) {
                                       <button
                                         type="button"
                                         key={st}
-                                        disabled={
-                                          dialog.item!.status === "locked"
-                                        }
+                                        disabled={busy}
                                         className={`${st} ${current === st ? "selected" : ""}`}
                                         onClick={() =>
                                           setAttendanceDraft((prev) => ({
@@ -2844,20 +2862,9 @@ export default function Dashboard({ initial }: { initial: Data }) {
                             );
                           })}
                         </div>
-                        {dialog.item!.status !== "locked" && (
-                          <Select name="lock" label="Sau khi lưu">
-                            <option value="no">Lưu điểm danh, chưa khóa</option>
-                            <option value="yes">
-                              Khóa buổi học (không thể sửa lại)
-                            </option>
-                          </Select>
-                        )}
                       </>
                     )}
-                    {!(
-                      dialog.type === "attendance" &&
-                      dialog.item!.status === "locked"
-                    ) && (
+                    {
                       <div className="modal-actions">
                         <button
                           type="button"
@@ -2886,7 +2893,7 @@ export default function Dashboard({ initial }: { initial: Data }) {
                                 : "Lưu thay đổi"}
                         </button>
                       </div>
-                    )}
+                    }
                   </form>
                 )}
 
@@ -3018,15 +3025,17 @@ export default function Dashboard({ initial }: { initial: Data }) {
                       {dialog.item!.end_time}
                     </p>
                     <p>Phòng: {dialog.item!.room || "Chưa có phòng"}</p>
-                    <Badge status={dialog.item!.status} />
-                    {!student && dialog.item!.status === "scheduled" && (
+                    <SessionBadge session={dialog.item!} />
+                    {!student && dialog.item!.status !== "cancelled" && (
                       <div className="session-actions">
                         <button
-                          className="button primary"
+                          className={`button primary ${dialog.item!.attendance_saved ? "attendance-saved" : ""}`}
                           onClick={() => open("attendance", dialog.item)}
                         >
                           <ClipboardCheck size={17} />
-                          Điểm danh
+                          {dialog.item!.attendance_saved
+                            ? "Sửa điểm danh"
+                            : "Điểm danh"}
                         </button>
                         <button
                           className="button"

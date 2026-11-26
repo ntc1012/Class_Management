@@ -47,7 +47,9 @@ Tài liệu nhà cung cấp: https://payos.vn/docs/huong-dan-su-dung/ket-noi-tai
 
 ## Scheduler và sao lưu
 
-Scheduler gọi `GET /api/cron` với header `Authorization: Bearer <CRON_SECRET>`, tần suất phù hợp gói hosting. Tác vụ chốt tháng trước khi mọi buổi đã khóa/hủy, và đối soát yêu cầu bảy ngày gần nhất. Khoản cũ có thể đối soát tại màn hình học phí.
+Scheduler gọi `GET /api/cron` với header `Authorization: Bearer <CRON_SECRET>`, tần suất phù hợp gói hosting. Tác vụ chốt tháng trước khi các buổi đã kết thúc và được điểm danh đầy đủ hoặc đã hủy, và đối soát yêu cầu bảy ngày gần nhất. Không cần khóa buổi. Khoản cũ có thể đối soát tại màn hình học phí.
+
+Điểm danh có thể sửa lại, kể cả buổi mang trạng thái khóa từ phiên bản cũ; trạng thái cũ được giữ trong database để tương thích lịch sử, không còn thao tác khóa trên giao diện/API. Khoản thu đã chốt không tự thay đổi theo các lần sửa điểm danh. Các lần lưu ghi trạng thái trước/sau vào nhật ký.
 
 Dùng backup/PITR của nhà cung cấp PostgreSQL; phục hồi vào database mới rồi đối chiếu học sinh, khoản thu và giao dịch trước khi chuyển kết nối. Backup/versioning S3 phải giữ file còn được bản database phục hồi tham chiếu. Lịch sử thu tiền chưa có tác vụ tự động xóa; yêu cầu sản phẩm là giữ ít nhất ba tháng.
 

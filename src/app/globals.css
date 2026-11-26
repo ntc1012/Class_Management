@@ -2986,3 +2986,6 @@ td code {
 .student-picker-row input[type="checkbox"] { width: 18px; height: 18px; min-height: 18px; padding: 0; flex-shrink: 0; accent-color: var(--primary, #11776c); }
 .student-picker-row span { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .student-picker-row small { color: var(--muted); font-weight: 400; }
+.button.attendance-saved { background: #e8f6ec; border-color: #86c69b; color: #216839; }
+.button.attendance-saved:hover { background: #d8efdf; border-color: #59a575; }
+.calendar-event.attendance-saved { background: #e8f6ec; border-color: #86c69b; color: #216839; }

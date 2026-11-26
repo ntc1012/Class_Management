@@ -38,7 +38,7 @@ export async function snapshot(a: Actor) {
     [a.center_id, ...classIds, ...(a.role === "student" ? studentIds : [])],
   );
   const sessions = await query(
-    `SELECT s.*,c.name class_name,c.room FROM sessions s JOIN classes c ON c.id=s.class_id WHERE s.center_id=? AND s.class_id IN (${inList(classIds)}) ORDER BY s.date,s.start_time`,
+    `SELECT s.*,c.name class_name,c.room,CASE WHEN EXISTS(SELECT 1 FROM attendance at WHERE at.session_id=s.id) THEN 1 ELSE 0 END attendance_saved,CASE WHEN EXISTS(SELECT 1 FROM invoice_lines il WHERE il.session_id=s.id) THEN 1 ELSE 0 END invoiced FROM sessions s JOIN classes c ON c.id=s.class_id WHERE s.center_id=? AND s.class_id IN (${inList(classIds)}) ORDER BY s.date,s.start_time`,
     [a.center_id, ...classIds],
   );
   const attendance = await query(

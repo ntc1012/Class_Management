@@ -289,7 +289,7 @@ export async function assignClass(a: Actor, input: unknown) {
       a.center_id,
     ]);
     const pending = await query(
-      "SELECT * FROM sessions WHERE class_id=? AND status='scheduled' ORDER BY date,start_time",
+      "SELECT * FROM sessions s WHERE class_id=? AND status='scheduled' AND NOT EXISTS (SELECT 1 FROM attendance at WHERE at.session_id=s.id) ORDER BY date,start_time",
       [c.id],
     );
     if (target)
@@ -309,7 +309,7 @@ export async function assignClass(a: Actor, input: unknown) {
     );
     await query("UPDATE classes SET teacher_id=? WHERE id=?", [target, c.id]);
     await query(
-      "UPDATE sessions SET teacher_id=? WHERE class_id=? AND status='scheduled'",
+      "UPDATE sessions SET teacher_id=? WHERE class_id=? AND status='scheduled' AND NOT EXISTS (SELECT 1 FROM attendance at WHERE at.session_id=sessions.id)",
       [target, c.id],
     );
     await audit(a, "class.assign", "class", c.id, {
@@ -398,7 +398,7 @@ export async function moveSession(a: Actor, input: unknown) {
     if (!s) throw new AppError("Không tìm thấy buổi học.");
     const c = await classAccess(a, s.class_id, true);
     if (
-      s.status !== "scheduled" ||
+      s.status === "cancelled" ||
       s.date < localDate() ||
       d.date < localDate()
     )
@@ -415,10 +415,8 @@ export async function moveSession(a: Actor, input: unknown) {
     // Temporarily exclude all moving sessions from conflict checks, inside the same transaction.
     for (const item of sessions) {
       const fresh = await lock("SELECT * FROM sessions WHERE id=?", [item.id]);
-      if (fresh.status !== "scheduled")
-        throw new AppError(
-          "Một buổi học vừa được khóa. Vui lòng tải lại lịch.",
-        );
+      if (fresh.status === "cancelled")
+        throw new AppError("Một buổi học vừa được hủy. Vui lòng tải lại lịch.");
       await query("UPDATE sessions SET status='cancelled' WHERE id=?", [
         item.id,
       ]);
@@ -454,7 +452,6 @@ export async function attendanceSave(a: Actor, input: unknown) {
         )
         .min(1)
         .max(200),
-      lock: z.boolean().default(false),
     })
     .parse(input);
   return transaction(async () => {
@@ -465,44 +462,32 @@ export async function attendanceSave(a: Actor, input: unknown) {
     if (!s) throw new AppError("Không tìm thấy buổi học.");
     const c = await classAccess(a, s.class_id, true);
     requireAssigned(c);
-    if (s.status !== "scheduled")
-      throw new AppError("Buổi đã khóa hoặc đã hủy, không thể sửa.");
-    const end = Date.parse(`${s.date}T${s.end_time}:00+07:00`);
-    if (d.lock && end > Date.now())
-      throw new AppError("Chỉ khóa buổi sau giờ kết thúc.");
+    if (s.status === "cancelled")
+      throw new AppError("Buổi đã hủy, không thể điểm danh.");
     const members = await query(
       "SELECT student_id FROM enrollments WHERE class_id=? AND substr(joined_at,1,10)<=? AND (ended_at IS NULL OR substr(ended_at,1,10)>?)",
       [s.class_id, s.date, s.date],
     );
     const eligible = new Set(members.map((x) => x.student_id));
     if (
+      d.entries.length !== eligible.size ||
       new Set(d.entries.map((e) => e.student_id)).size !== d.entries.length ||
       d.entries.some((e) => !eligible.has(e.student_id))
     )
       throw new AppError("Danh sách điểm danh không hợp lệ.");
+    const previous = await query(
+      "SELECT student_id,status,note FROM attendance WHERE session_id=?",
+      [s.id],
+    );
     for (const e of d.entries)
       await query(
         "INSERT INTO attendance(id,center_id,session_id,student_id,status,note,marked_by,marked_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(session_id,student_id) DO UPDATE SET status=excluded.status,note=excluded.note,marked_by=excluded.marked_by,marked_at=excluded.marked_at",
         [id(), a.center_id, s.id, e.student_id, e.status, e.note, a.id, now()],
       );
-    if (d.lock) {
-      const count = await one(
-        "SELECT COUNT(*) n FROM attendance WHERE session_id=?",
-        [s.id],
-      );
-      if (Number(count.n) !== eligible.size)
-        throw new AppError("Cần điểm danh đủ học sinh trước khi khóa.");
-      await query(
-        "UPDATE sessions SET status='locked',locked_at=? WHERE id=?",
-        [now(), s.id],
-      );
-    }
-    await audit(
-      a,
-      d.lock ? "session.lock" : "attendance.save",
-      "session",
-      s.id,
-    );
+    await audit(a, "attendance.save", "session", s.id, {
+      previous_entries: previous,
+      entries: d.entries,
+    });
     return { ok: true };
   });
 }
@@ -514,7 +499,7 @@ export async function cancelSession(a: Actor, sessionId: string) {
     ]);
     if (!s) throw new AppError("Không tìm thấy buổi học.");
     await classAccess(a, s.class_id, true);
-    if (s.status !== "scheduled") throw new AppError("Buổi đã khóa hoặc hủy.");
+    if (s.status === "cancelled") throw new AppError("Buổi đã được hủy.");
     await query("UPDATE sessions SET status='cancelled' WHERE id=?", [s.id]);
     await audit(a, "session.cancel", "session", s.id);
     return { ok: true };
@@ -554,15 +539,27 @@ export async function generateInvoices(a: Actor, input: unknown) {
   return transaction(async () => {
     await lock("SELECT id FROM users WHERE id=?", [teacher]);
     const pending = await one(
-      "SELECT COUNT(*) n FROM sessions s JOIN classes c ON c.id=s.class_id WHERE c.center_id=? AND COALESCE(s.teacher_id,c.teacher_id)=? AND substr(s.date,1,7)=? AND s.status='scheduled'",
-      [a.center_id, teacher, d.period],
+      "SELECT COUNT(*) n FROM sessions s JOIN classes c ON c.id=s.class_id WHERE c.center_id=? AND COALESCE(s.teacher_id,c.teacher_id)=? AND substr(s.date,1,7)=? AND s.status<>'cancelled' AND (s.date>? OR (s.date=? AND s.end_time>?) OR NOT EXISTS (SELECT 1 FROM attendance at WHERE at.session_id=s.id) OR EXISTS (SELECT 1 FROM enrollments e WHERE e.class_id=s.class_id AND substr(e.joined_at,1,10)<=s.date AND (e.ended_at IS NULL OR substr(e.ended_at,1,10)>s.date) AND NOT EXISTS (SELECT 1 FROM attendance at WHERE at.session_id=s.id AND at.student_id=e.student_id)))",
+      [
+        a.center_id,
+        teacher,
+        d.period,
+        localDate(),
+        localDate(),
+        new Intl.DateTimeFormat("en-GB", {
+          timeZone: "Asia/Ho_Chi_Minh",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }).format(new Date()),
+      ],
     );
     if (Number(pending.n))
       throw new AppError(
-        "Cần khóa hoặc hủy tất cả buổi trong tháng trước khi chốt học phí.",
+        "Cần điểm danh đầy đủ các buổi đã kết thúc hoặc hủy buổi không học trước khi chốt học phí.",
       );
     const rows = await query(
-      "SELECT at.student_id,at.status,s.id session_id,s.fee,s.date,c.name,su.user_id FROM attendance at JOIN sessions s ON s.id=at.session_id JOIN classes c ON c.id=s.class_id JOIN students su ON su.id=at.student_id WHERE c.center_id=? AND COALESCE(s.teacher_id,c.teacher_id)=? AND substr(s.date,1,7)=? AND s.status='locked' ORDER BY s.date",
+      "SELECT at.student_id,at.status,s.id session_id,s.fee,s.date,c.name,su.user_id FROM attendance at JOIN sessions s ON s.id=at.session_id JOIN classes c ON c.id=s.class_id JOIN students su ON su.id=at.student_id WHERE c.center_id=? AND COALESCE(s.teacher_id,c.teacher_id)=? AND substr(s.date,1,7)=? AND s.status<>'cancelled' ORDER BY s.date",
       [a.center_id, teacher, d.period],
     );
     const groups = new Map<string, Row[]>();

@@ -308,7 +308,7 @@ describe(
       assert.equal(result.count, 3);
       assert.equal(Number((await one("SELECT COUNT(*) n FROM sessions")).n), 4);
     });
-    it("locks completed attendance, rejects changes and future locking", async () => {
+    it("saves editable attendance without locking", async () => {
       await query(
         "INSERT INTO sessions(id,center_id,class_id,original_date,date,start_time,end_time,fee) VALUES('past','c1',?,'2020-02-03','2020-02-03','17:00','18:00',50000)",
         [classId],
@@ -318,13 +318,22 @@ describe(
         entries: [{ student_id: studentId, status: "absent" }],
         lock: true,
       });
-      await assert.rejects(
-        service.attendanceSave(teacher, {
-          session_id: "past",
-          entries: [{ student_id: studentId, status: "excused" }],
-        }),
-        /đã khóa/,
+      await service.attendanceSave(teacher, {
+        session_id: "past",
+        entries: [{ student_id: studentId, status: "excused" }],
+      });
+      assert.equal(
+        (await one("SELECT * FROM attendance WHERE session_id='past'")).status,
+        "excused",
       );
+      assert.equal(
+        (await one("SELECT * FROM sessions WHERE id='past'")).status,
+        "scheduled",
+      );
+      await service.attendanceSave(teacher, {
+        session_id: "past",
+        entries: [{ student_id: studentId, status: "absent" }],
+      });
       await assert.rejects(
         service.moveSession(teacher, {
           session_id: "past",
@@ -338,13 +347,15 @@ describe(
       const future = await one(
         "SELECT * FROM sessions WHERE status='scheduled' ORDER BY date DESC LIMIT 1",
       );
-      await assert.rejects(
-        service.attendanceSave(teacher, {
-          session_id: future.id,
-          entries: [{ student_id: studentId, status: "present" }],
-          lock: true,
-        }),
-        /giờ kết thúc/,
+      await service.attendanceSave(teacher, {
+        session_id: future.id,
+        entries: [{ student_id: studentId, status: "present" }],
+        lock: true,
+      });
+      assert.equal(
+        (await one("SELECT status FROM sessions WHERE id=?", [future.id]))
+          .status,
+        "scheduled",
       );
     });
     it("creates monthly invoices idempotently from frozen fees", async () => {

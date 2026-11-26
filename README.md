@@ -29,12 +29,12 @@ Không có tài khoản `admin@classflow.local` hoặc `linh@classflow.local` đ
 
 ## Tính năng
 
-- Admin tạo lớp mà không trở thành giáo viên; có thể để Chưa phân công rồi chọn giáo viên tại Lớp học → Phân công. Đổi giáo viên chỉ tác động buổi chưa khóa, không thay đổi học phí và điểm danh đã chốt.
+- Admin tạo lớp mà không trở thành giáo viên; có thể để Chưa phân công rồi chọn giáo viên tại Lớp học → Phân công. Đổi giáo viên chỉ tác động buổi chưa điểm danh, không thay đổi học phí và lịch sử giảng dạy.
 
 - Admin quản lý trung tâm; giáo viên chỉ quản lý lớp, học sinh và học phí của mình.
 - Hồ sơ học sinh, nhập/xuất CSV, ghi danh/nghỉ lớp, mã kích hoạt một lần có hạn 48 giờ.
 - Lịch tuần, chống trùng giáo viên/phòng, đổi một buổi hoặc phần còn lại của chuỗi.
-- Có mặt / vắng có phép / vắng không phép; khóa buổi sau giờ học, không sửa lại.
+- Có mặt / vắng có phép / vắng không phép; lưu đầy đủ lần đầu chuyển trạng thái sang Đã điểm danh màu xanh, có thể sửa lại và lưu nhật ký. Không có thao tác khóa buổi. Bảng điểm danh ưu tiên hôm nay và ngày vừa qua, sau đó đến lịch sắp tới gần nhất.
 - Học phí 50.000đ/buổi; vắng có phép không tính tiền, chốt cuối tháng. Admin điều chỉnh có lý do, giữ khoản gốc và lịch sử tối thiểu ba tháng.
 - Tài khoản ngân hàng riêng cho giáo viên, QR theo khoản thu, adapter payOS, webhook có xác thực/chống trùng, thanh toán một phần và đối soát. Kết nối thực tế Agribank/Techcombank cần được nhà cung cấp xác nhận.
 - Bài tập giao theo danh sách lớp tại thời điểm giao; học sinh mới không nhận bài cũ. Nộp lại nhiều phiên bản trước hạn, giáo viên khóa sớm/chấm/nhận xét.

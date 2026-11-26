@@ -13,26 +13,27 @@
 
 - Admin tạo lớp mà không tự trở thành giáo viên. Lớp có thể ở trạng thái chưa phân công; admin chọn hoặc đổi giáo viên phụ trách trong mục Phân công giáo viên. Chỉ chọn giáo viên đang hoạt động trong cùng trung tâm.
 - Giáo viên chỉ truy cập lớp đang được giao. Học sinh do admin thêm vào lớp cũng hiển thị cho giáo viên phụ trách.
-- Đổi giáo viên cập nhật các buổi chưa khóa và kiểm tra trùng lịch. Buổi đã khóa lưu giáo viên tại thời điểm dạy; khoản thu, thanh toán và điểm danh cũ không bị chuyển sang giáo viên mới.
+- Đổi giáo viên cập nhật các buổi chưa điểm danh và kiểm tra trùng lịch. Buổi đã điểm danh lưu giáo viên tại thời điểm dạy; khoản thu, thanh toán và điểm danh cũ không bị chuyển sang giáo viên mới.
 - Các lớp cũ từng tự gán admin làm giáo viên được chuyển thành chưa phân công, giữ nguyên lớp và lịch sử. Admin có thể phân công ngay trên lớp đó.
 
 - Giáo viên tạo lớp và thêm học sinh; chủ trung tâm có thể thực hiện thay giáo viên.
 - Lịch lặp theo tuần, tạo trước tối đa một năm. Phát hiện trùng giờ giáo viên hoặc phòng trong cùng trung tâm.
 - Đổi một buổi hoặc buổi được chọn cùng các buổi chưa học tiếp theo trong chuỗi. Đổi chuỗi dịch ngày theo cùng số ngày và dùng giờ mới.
-- Chỉ đổi lịch từ hôm nay trở đi. Không sửa buổi đã khóa.
+- Chỉ đổi lịch từ hôm nay trở đi.
 - Ba trạng thái: có mặt, vắng có phép, vắng không phép. Không có đi muộn.
-- Chỉ khóa sau giờ kết thúc và khi điểm danh đầy đủ. Khóa là bất biến; sửa sai bằng điều chỉnh học phí của chủ trung tâm.
-- Buổi hủy không tính tiền. Buổi chưa điểm danh/khóa chưa được chốt phí.
+- Không có chức năng khóa buổi. Lưu đầy đủ điểm danh lần đầu chuyển trạng thái sang Đã điểm danh màu xanh; giáo viên có thể sửa lại và hệ thống lưu lịch sử trước/sau.
+- Bảng điểm danh hiển thị hôm nay và các ngày đã qua giảm dần, sau đó đến lịch tương lai tăng dần theo ngày và giờ.
+- Buổi hủy không tính tiền. Buổi chưa điểm danh đầy đủ hoặc chưa kết thúc chưa được chốt phí.
 - Nghỉ lớp giữ lại các lần ghi danh cũ; ghi danh lại tạo lần mới.
 
 ## Học phí
 
 - Mỗi buổi 50.000 VND. Có mặt hoặc vắng không phép: 50.000đ. Vắng có phép: 0đ.
 - Mức phí được lưu trên từng buổi. Khoản thu lưu chi tiết từng buổi, không tính lại từ giá hiện tại.
-- Thu cuối tháng: chỉ chốt từ ngày cuối tháng và khi toàn bộ buổi của giáo viên trong tháng đã khóa/hủy.
+- Thu cuối tháng: chỉ chốt từ ngày cuối tháng và khi toàn bộ buổi của giáo viên trong tháng đã kết thúc, được điểm danh đầy đủ hoặc đã hủy. Không cần khóa buổi.
 - Một học sinh có một khoản phải thu cho mỗi giáo viên, mỗi tháng; có thể bao gồm nhiều lớp của giáo viên đó.
 - Chốt lặp không tạo khoản trùng. Hỗ trợ thanh toán một phần qua nhiều giao dịch.
-- Điều chỉnh phải có lý do, chỉ chủ trung tâm thực hiện, tổng phải thu không âm. Không sửa khoản gốc hay điểm danh đã khóa.
+- Điều chỉnh phải có lý do, chỉ chủ trung tâm thực hiện, tổng phải thu không âm. Sửa điểm danh sau khi chốt không tự thay đổi khoản thu gốc; dùng điều chỉnh học phí khi cần.
 - Lưu lịch sử thu và điều chỉnh tối thiểu ba tháng; phiên bản này chưa tự động xóa lịch sử.
 
 ## Thanh toán
