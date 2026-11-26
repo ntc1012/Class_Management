@@ -29,6 +29,8 @@ Không có tài khoản `admin@classflow.local` hoặc `linh@classflow.local` đ
 
 ## Tính năng
 
+- Admin tạo lớp mà không trở thành giáo viên; có thể để Chưa phân công rồi chọn giáo viên tại Lớp học → Phân công. Đổi giáo viên chỉ tác động buổi chưa khóa, không thay đổi học phí và điểm danh đã chốt.
+
 - Admin quản lý trung tâm; giáo viên chỉ quản lý lớp, học sinh và học phí của mình.
 - Hồ sơ học sinh, nhập/xuất CSV, ghi danh/nghỉ lớp, mã kích hoạt một lần có hạn 48 giờ.
 - Lịch tuần, chống trùng giáo viên/phòng, đổi một buổi hoặc phần còn lại của chuỗi.

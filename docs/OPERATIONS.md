@@ -2,6 +2,8 @@
 
 ## Hạ tầng
 
+Migration `class-assignment-v1` chạy một lần trong transaction khi khởi tạo: cho phép lớp chưa có giáo viên, lưu người tạo lớp và giáo viên theo từng buổi; bỏ việc mặc định admin là giáo viên. Lớp cũ gắn admin chuyển thành “Chưa phân công”, không xóa lớp hoặc lịch sử thu tiền. Admin chọn giáo viên tại Lớp học → Phân công. Các lần đổi giáo viên sau đó chỉ cập nhật buổi chưa khóa.
+
 - Bản sản phẩm dùng PostgreSQL qua `DATABASE_URL`. SQLite chỉ dành cho test nội bộ.
 - Kho file là S3 riêng tư. Không lưu file bài tập trong filesystem của Vercel.
 - Không có tài khoản/mật khẩu admin hoặc giáo viên mặc định. Admin đầu tiên tạo tại `/setup`.

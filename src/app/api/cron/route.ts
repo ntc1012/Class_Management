@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       [y, m] = today.split("-").map(Number),
       previous = new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
     const actors = await query(
-      "SELECT id,center_id,role,name,email FROM users WHERE role IN ('teacher','owner') AND active=1",
+      "SELECT id,center_id,role,name,email FROM users WHERE role='teacher' AND active=1",
     );
     const results = [];
     for (const teacher of actors) {

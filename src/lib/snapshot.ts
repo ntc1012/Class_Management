@@ -15,7 +15,7 @@ export async function snapshot(a: Actor) {
     args.push(a.id);
   }
   const classes = await query(
-    `SELECT c.*,u.name teacher_name,(SELECT COUNT(*) FROM enrollments en WHERE en.class_id=c.id AND en.ended_at IS NULL) student_count FROM classes c JOIN users u ON u.id=c.teacher_id WHERE ${condition} ORDER BY c.created_at DESC`,
+    `SELECT c.*,COALESCE(u.name,'Chưa phân công') teacher_name,(SELECT COUNT(*) FROM enrollments en WHERE en.class_id=c.id AND en.ended_at IS NULL) student_count FROM classes c LEFT JOIN users u ON u.id=c.teacher_id WHERE ${condition} ORDER BY c.created_at DESC`,
     args,
   );
   const classIds = classes.map((c) => c.id);
@@ -29,8 +29,8 @@ export async function snapshot(a: Actor) {
     );
   else
     students = await query(
-      `SELECT s.*,u.email username FROM students s LEFT JOIN users u ON u.id=s.user_id WHERE s.center_id=? ${a.role === "teacher" ? "AND s.teacher_id=?" : ""} ORDER BY s.created_at DESC`,
-      a.role === "teacher" ? [a.center_id, a.id] : [a.center_id],
+      `SELECT s.*,u.email username FROM students s LEFT JOIN users u ON u.id=s.user_id WHERE s.center_id=? ${a.role === "teacher" ? "AND (s.teacher_id=? OR EXISTS(SELECT 1 FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.student_id=s.id AND e.ended_at IS NULL AND c.teacher_id=? AND c.center_id=s.center_id))" : ""} ORDER BY s.created_at DESC`,
+      a.role === "teacher" ? [a.center_id, a.id, a.id] : [a.center_id],
     );
   const studentIds = students.map((s) => s.id);
   const enrollments = await query(
@@ -38,7 +38,7 @@ export async function snapshot(a: Actor) {
     [a.center_id, ...classIds, ...(a.role === "student" ? studentIds : [])],
   );
   const sessions = await query(
-    `SELECT s.*,c.name class_name,c.teacher_id,c.room FROM sessions s JOIN classes c ON c.id=s.class_id WHERE s.center_id=? AND s.class_id IN (${inList(classIds)}) ORDER BY s.date,s.start_time`,
+    `SELECT s.*,c.name class_name,c.room FROM sessions s JOIN classes c ON c.id=s.class_id WHERE s.center_id=? AND s.class_id IN (${inList(classIds)}) ORDER BY s.date,s.start_time`,
     [a.center_id, ...classIds],
   );
   const attendance = await query(
@@ -94,7 +94,7 @@ export async function snapshot(a: Actor) {
     a.role === "student"
       ? []
       : await query(
-          `SELECT id,name,email,role FROM users WHERE center_id=? AND role IN ('owner','teacher') ${a.role === "teacher" ? "AND id=?" : ""} ORDER BY name`,
+          `SELECT id,name,email,role FROM users WHERE center_id=? AND role='teacher' AND active=1 ${a.role === "teacher" ? "AND id=?" : ""} ORDER BY name`,
           a.role === "teacher" ? [a.center_id, a.id] : [a.center_id],
         );
   const banks =

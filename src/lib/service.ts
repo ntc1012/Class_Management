@@ -67,15 +67,28 @@ export async function notify(
 }
 async function teacherFor(a: Actor, teacherId?: string) {
   staff(a);
-  const target = a.role === "owner" ? teacherId || a.id : a.id;
+  const target = a.role === "owner" ? teacherId : a.id;
+  if (!target) throw new AppError("Vui lòng chọn giáo viên.");
   if (
     !(await one(
-      "SELECT id FROM users WHERE id=? AND center_id=? AND role IN ('teacher','owner') AND active=1",
+      "SELECT id FROM users WHERE id=? AND center_id=? AND role='teacher' AND active=1",
       [target, a.center_id],
     ))
   )
     throw new AppError("Giáo viên không hợp lệ.");
   return target;
+}
+function requireAssigned(c: Row) {
+  if (!c.teacher_id)
+    throw new AppError(
+      "Cần phân công giáo viên cho lớp trước khi thực hiện thao tác này.",
+    );
+}
+async function readClass(centerId: string, classId: string) {
+  return one(
+    "SELECT c.*,COALESCE(u.name,'Chưa phân công') teacher_name,(SELECT COUNT(*) FROM enrollments e WHERE e.class_id=c.id AND e.ended_at IS NULL) student_count FROM classes c LEFT JOIN users u ON u.id=c.teacher_id WHERE c.id=? AND c.center_id=?",
+    [classId, centerId],
+  );
 }
 async function conflict(
   a: Actor,
@@ -87,13 +100,14 @@ async function conflict(
 ) {
   if (start >= end) throw new AppError("Giờ kết thúc phải sau giờ bắt đầu.");
   const rows = await query(
-    "SELECT s.*,c.teacher_id,c.room,c.name FROM sessions s JOIN classes c ON c.id=s.class_id WHERE s.center_id=? AND s.date=? AND s.status<>'cancelled'",
+    "SELECT s.*,COALESCE(s.teacher_id,c.teacher_id) assigned_teacher,c.room,c.name FROM sessions s JOIN classes c ON c.id=s.class_id WHERE s.center_id=? AND s.date=? AND s.status<>'cancelled'",
     [a.center_id, dateValue],
   );
   const hit = rows.find(
     (s) =>
       s.id !== exclude &&
-      (s.teacher_id === c.teacher_id || (c.room && s.room === c.room)) &&
+      ((c.teacher_id && s.assigned_teacher === c.teacher_id) ||
+        (c.room && s.room === c.room)) &&
       overlap(start, end, s.start_time, s.end_time),
   );
   if (hit)
@@ -112,10 +126,14 @@ export async function createStudent(a: Actor, input: unknown) {
       class_id: z.string().optional(),
     })
     .parse(input);
-  const teacher = await teacherFor(a, d.teacher_id);
+  staff(a);
+  const teacher =
+    a.role === "owner" && !d.teacher_id
+      ? a.id
+      : await teacherFor(a, d.teacher_id);
   if (d.class_id) {
     const c = await classAccess(a, d.class_id, true);
-    if (c.teacher_id !== teacher)
+    if (a.role !== "owner" && c.teacher_id !== teacher)
       throw new AppError("Học sinh và lớp phải cùng giáo viên quản lý.");
   }
   return transaction(async () => {
@@ -155,14 +173,18 @@ export async function createClass(a: Actor, input: unknown) {
       level: z.string().max(100).default(""),
       room: z.string().max(100).default(""),
       capacity: z.coerce.number().int().min(1).max(200).default(30),
-      teacher_id: z.string().optional(),
+      teacher_id: z.string().nullable().optional(),
     })
     .parse(input);
-  const teacher = await teacherFor(a, d.teacher_id),
+  staff(a);
+  const teacher =
+      a.role === "owner" && !d.teacher_id
+        ? null
+        : await teacherFor(a, d.teacher_id || undefined),
     classId = id();
   const createdClass = await transaction(async () => {
     await query(
-      "INSERT INTO classes(id,center_id,teacher_id,name,subject,level,room,capacity,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO classes(id,center_id,teacher_id,name,subject,level,room,capacity,created_at,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)",
       [
         classId,
         a.center_id,
@@ -173,13 +195,11 @@ export async function createClass(a: Actor, input: unknown) {
         d.room,
         d.capacity,
         now(),
+        a.id,
       ],
     );
     await audit(a, "class.create", "class", classId);
-    const record = await one(
-      "SELECT c.*,u.name teacher_name,0 AS student_count FROM classes c JOIN users u ON u.id=c.teacher_id WHERE c.id=? AND c.center_id=?",
-      [classId, a.center_id],
-    );
+    const record = await readClass(a.center_id, classId);
     if (!record) throw new AppError("Chưa thể đọc lại lớp vừa tạo.", 500);
     return record;
   });
@@ -191,8 +211,6 @@ export async function enroll(a: Actor, input: unknown) {
   return transaction(async () => {
     const c = await classAccess(a, d.class_id, true),
       s = await studentAccess(a, d.student_id);
-    if (c.teacher_id !== s.teacher_id)
-      throw new AppError("Học sinh và lớp phải cùng giáo viên quản lý.");
     await lock("SELECT id FROM classes WHERE id=?", [c.id]);
     if (
       await one(
@@ -214,6 +232,52 @@ export async function enroll(a: Actor, input: unknown) {
     return { ok: true };
   });
 }
+export async function assignClass(a: Actor, input: unknown) {
+  owner(a);
+  const d = z
+    .object({ class_id: text, teacher_id: z.string().nullable().optional() })
+    .parse(input);
+  const target = d.teacher_id ? await teacherFor(a, d.teacher_id) : null;
+  return transaction(async () => {
+    await lock("SELECT id FROM centers WHERE id=?", [a.center_id]);
+    await classAccess(a, d.class_id, true);
+    const c = await lock("SELECT * FROM classes WHERE id=? AND center_id=?", [
+      d.class_id,
+      a.center_id,
+    ]);
+    const pending = await query(
+      "SELECT * FROM sessions WHERE class_id=? AND status='scheduled' ORDER BY date,start_time",
+      [c.id],
+    );
+    if (target)
+      for (const s of pending)
+        await conflict(
+          a,
+          { ...c, teacher_id: target },
+          s.date,
+          s.start_time,
+          s.end_time,
+          s.id,
+        );
+    // Preserve the teaching identity of completed sessions before changing current assignment.
+    await query(
+      "UPDATE sessions SET teacher_id=? WHERE class_id=? AND teacher_id IS NULL",
+      [c.teacher_id, c.id],
+    );
+    await query("UPDATE classes SET teacher_id=? WHERE id=?", [target, c.id]);
+    await query(
+      "UPDATE sessions SET teacher_id=? WHERE class_id=? AND status='scheduled'",
+      [target, c.id],
+    );
+    await audit(a, "class.assign", "class", c.id, {
+      previous_teacher_id: c.teacher_id,
+      teacher_id: target,
+    });
+    if (target && target !== c.teacher_id)
+      await notify(a, target, "Bạn được phân công lớp học", c.name);
+    return { id: c.id, class: await readClass(a.center_id, c.id) };
+  });
+}
 export async function createSchedule(a: Actor, input: unknown) {
   const d = z
     .object({
@@ -225,7 +289,6 @@ export async function createSchedule(a: Actor, input: unknown) {
       end_date: date,
     })
     .parse(input);
-  const c = await classAccess(a, d.class_id, true);
   const dates = datesBetween(d.start_date, d.end_date, d.weekday);
   if (!dates.length || d.start_date < localDate())
     throw new AppError(
@@ -233,6 +296,8 @@ export async function createSchedule(a: Actor, input: unknown) {
     );
   return transaction(async () => {
     await lock("SELECT id FROM centers WHERE id=?", [a.center_id]);
+    const c = await classAccess(a, d.class_id, true);
+    requireAssigned(c);
     const scheduleId = id();
     for (const day of dates)
       await conflict(a, c, day, d.start_time, d.end_time);
@@ -251,7 +316,7 @@ export async function createSchedule(a: Actor, input: unknown) {
     );
     for (const day of dates)
       await query(
-        "INSERT INTO sessions(id,center_id,class_id,schedule_id,original_date,date,start_time,end_time,fee) VALUES(?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO sessions(id,center_id,class_id,schedule_id,original_date,date,start_time,end_time,fee,teacher_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
         [
           id(),
           a.center_id,
@@ -262,6 +327,7 @@ export async function createSchedule(a: Actor, input: unknown) {
           d.start_time,
           d.end_time,
           c.fee,
+          c.teacher_id,
         ],
       );
     await audit(a, "schedule.create", "schedule", scheduleId, {
@@ -354,7 +420,8 @@ export async function attendanceSave(a: Actor, input: unknown) {
       a.center_id,
     ]);
     if (!s) throw new AppError("Không tìm thấy buổi học.");
-    await classAccess(a, s.class_id, true);
+    const c = await classAccess(a, s.class_id, true);
+    requireAssigned(c);
     if (s.status !== "scheduled")
       throw new AppError("Buổi đã khóa hoặc đã hủy, không thể sửa.");
     const end = Date.parse(`${s.date}T${s.end_time}:00+07:00`);
@@ -444,7 +511,7 @@ export async function generateInvoices(a: Actor, input: unknown) {
   return transaction(async () => {
     await lock("SELECT id FROM users WHERE id=?", [teacher]);
     const pending = await one(
-      "SELECT COUNT(*) n FROM sessions s JOIN classes c ON c.id=s.class_id WHERE c.center_id=? AND c.teacher_id=? AND substr(s.date,1,7)=? AND s.status='scheduled'",
+      "SELECT COUNT(*) n FROM sessions s JOIN classes c ON c.id=s.class_id WHERE c.center_id=? AND COALESCE(s.teacher_id,c.teacher_id)=? AND substr(s.date,1,7)=? AND s.status='scheduled'",
       [a.center_id, teacher, d.period],
     );
     if (Number(pending.n))
@@ -452,7 +519,7 @@ export async function generateInvoices(a: Actor, input: unknown) {
         "Cần khóa hoặc hủy tất cả buổi trong tháng trước khi chốt học phí.",
       );
     const rows = await query(
-      "SELECT at.student_id,at.status,s.id session_id,s.fee,s.date,c.name,su.user_id FROM attendance at JOIN sessions s ON s.id=at.session_id JOIN classes c ON c.id=s.class_id JOIN students su ON su.id=at.student_id WHERE c.center_id=? AND c.teacher_id=? AND substr(s.date,1,7)=? AND s.status='locked' ORDER BY s.date",
+      "SELECT at.student_id,at.status,s.id session_id,s.fee,s.date,c.name,su.user_id FROM attendance at JOIN sessions s ON s.id=at.session_id JOIN classes c ON c.id=s.class_id JOIN students su ON su.id=at.student_id WHERE c.center_id=? AND COALESCE(s.teacher_id,c.teacher_id)=? AND substr(s.date,1,7)=? AND s.status='locked' ORDER BY s.date",
       [a.center_id, teacher, d.period],
     );
     const groups = new Map<string, Row[]>();
@@ -553,6 +620,8 @@ export async function createAssignment(a: Actor, input: unknown) {
     throw new AppError("Hạn nộp phải ở tương lai.");
   return transaction(async () => {
     await lock("SELECT id FROM classes WHERE id=?", [c.id]);
+    const assigned = await classAccess(a, d.class_id, true);
+    requireAssigned(assigned);
     const assignmentId = id();
     await query(
       "INSERT INTO assignments(id,center_id,class_id,teacher_id,title,description,due_at,max_score,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
@@ -560,7 +629,7 @@ export async function createAssignment(a: Actor, input: unknown) {
         assignmentId,
         a.center_id,
         c.id,
-        c.teacher_id,
+        assigned.teacher_id,
         d.title,
         d.description,
         d.due_at,
@@ -781,11 +850,18 @@ export async function importStudents(a: Actor, input: unknown) {
     .object({ csv: z.string().max(200000), teacher_id: z.string().optional() })
     .parse(input);
   const rows = parseStudentsCsv(d.csv);
-  const teacher = await teacherFor(a, d.teacher_id);
+  const teacher =
+    a.role === "owner" && !d.teacher_id
+      ? a.id
+      : await teacherFor(a, d.teacher_id);
   return transaction(async () => {
     const created = [];
     for (const r of rows) {
-      const record = await createStudent(a, { ...r, teacher_id: teacher });
+      const record = await createStudent(a, {
+        ...r,
+        teacher_id:
+          teacher === a.id && a.role === "owner" ? undefined : teacher,
+      });
       created.push({ name: r.name, ...record });
     }
     await audit(a, "student.import", "teacher", teacher, {

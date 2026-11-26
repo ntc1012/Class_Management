@@ -126,6 +126,8 @@ export async function initialize() {
         ["payment_requests", "provider_account"],
         ["payment_requests", "provider_credentials"],
         ["bank_accounts", "verified_at"],
+        ["classes", "created_by"],
+        ["sessions", "teacher_id"],
       ]) {
         if (postgres())
           await query(
@@ -155,6 +157,36 @@ export async function initialize() {
             );
           });
       }
+      await transaction(async () => {
+        await query(
+          "INSERT INTO app_bootstrap(id,completed_at) VALUES('class-assignment-v1',NULL) ON CONFLICT(id) DO NOTHING",
+        );
+        const migration = await lock(
+          "SELECT * FROM app_bootstrap WHERE id='class-assignment-v1'",
+          [],
+        );
+        if (migration.completed_at) return;
+        if (postgres())
+          await query(
+            "ALTER TABLE classes ALTER COLUMN teacher_id DROP NOT NULL",
+          );
+        await query(
+          "UPDATE classes SET created_by=COALESCE((SELECT l.actor_id FROM audit_logs l WHERE l.entity_id=classes.id AND l.action='class.create' ORDER BY l.created_at LIMIT 1),teacher_id) WHERE created_by IS NULL",
+        );
+        await query(
+          "UPDATE sessions SET teacher_id=(SELECT c.teacher_id FROM classes c WHERE c.id=sessions.class_id) WHERE teacher_id IS NULL",
+        );
+        await query(
+          "UPDATE classes SET teacher_id=NULL WHERE teacher_id IN (SELECT id FROM users WHERE role='owner')",
+        );
+        await query(
+          "UPDATE sessions SET teacher_id=NULL WHERE status='scheduled' AND class_id IN (SELECT id FROM classes WHERE teacher_id IS NULL)",
+        );
+        await query(
+          "UPDATE app_bootstrap SET completed_at=? WHERE id='class-assignment-v1'",
+          [now()],
+        );
+      });
     })().catch((e) => {
       globals.cfInit = undefined;
       throw e;
@@ -169,7 +201,7 @@ CREATE TABLE IF NOT EXISTS auth_sessions (token_hash TEXT PRIMARY KEY, user_id T
 CREATE TABLE IF NOT EXISTS activations (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires_at TEXT NOT NULL, used_at TEXT);
 CREATE TABLE IF NOT EXISTS auth_limits (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, window_start TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS students (id TEXT PRIMARY KEY, center_id TEXT NOT NULL REFERENCES centers(id), teacher_id TEXT NOT NULL REFERENCES users(id), user_id TEXT UNIQUE REFERENCES users(id), name TEXT NOT NULL, school TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS classes (id TEXT PRIMARY KEY, center_id TEXT NOT NULL REFERENCES centers(id), teacher_id TEXT NOT NULL REFERENCES users(id), name TEXT NOT NULL, subject TEXT NOT NULL, level TEXT NOT NULL DEFAULT '', room TEXT NOT NULL DEFAULT '', capacity INTEGER NOT NULL DEFAULT 30, fee INTEGER NOT NULL DEFAULT 50000 CHECK(fee >= 0), color TEXT NOT NULL DEFAULT 'blue', created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS classes (id TEXT PRIMARY KEY, center_id TEXT NOT NULL REFERENCES centers(id), teacher_id TEXT REFERENCES users(id), name TEXT NOT NULL, subject TEXT NOT NULL, level TEXT NOT NULL DEFAULT '', room TEXT NOT NULL DEFAULT '', capacity INTEGER NOT NULL DEFAULT 30, fee INTEGER NOT NULL DEFAULT 50000 CHECK(fee >= 0), color TEXT NOT NULL DEFAULT 'blue', created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS enrollments (id TEXT PRIMARY KEY, center_id TEXT NOT NULL REFERENCES centers(id), class_id TEXT NOT NULL REFERENCES classes(id), student_id TEXT NOT NULL REFERENCES students(id), joined_at TEXT NOT NULL, ended_at TEXT);
 CREATE TABLE IF NOT EXISTS schedules (id TEXT PRIMARY KEY, center_id TEXT NOT NULL REFERENCES centers(id), class_id TEXT NOT NULL REFERENCES classes(id), weekday INTEGER NOT NULL CHECK(weekday BETWEEN 0 AND 6), start_time TEXT NOT NULL, end_time TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, center_id TEXT NOT NULL REFERENCES centers(id), class_id TEXT NOT NULL REFERENCES classes(id), schedule_id TEXT REFERENCES schedules(id), original_date TEXT NOT NULL, date TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, fee INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','locked','cancelled')), locked_at TEXT, UNIQUE(schedule_id,original_date));

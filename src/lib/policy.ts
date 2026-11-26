@@ -31,9 +31,16 @@ export async function studentAccess(a: Actor, id: string) {
     id,
     a.center_id,
   ]);
+  const teachesStudent =
+    s &&
+    a.role === "teacher" &&
+    (await one(
+      "SELECT e.id FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.student_id=? AND e.ended_at IS NULL AND c.center_id=? AND c.teacher_id=?",
+      [id, a.center_id, a.id],
+    ));
   if (
     !s ||
-    (a.role === "teacher" && s.teacher_id !== a.id) ||
+    (a.role === "teacher" && s.teacher_id !== a.id && !teachesStudent) ||
     (a.role === "student" && s.user_id !== a.id)
   )
     throw new AppError("Không tìm thấy học sinh.", 404);

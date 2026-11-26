@@ -40,6 +40,9 @@ export async function POST(request: Request) {
       case "class.create":
         result = await service.createClass(a, body);
         break;
+      case "class.assign":
+        result = await service.assignClass(a, body);
+        break;
       case "class.update":
         result = await service.updateClass(a, body);
         break;

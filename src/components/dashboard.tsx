@@ -81,6 +81,7 @@ const actionNames: Record<string, string> = {
   "student.import": "Nhập danh sách học sinh",
   "class.create": "Tạo lớp",
   "class.update": "Sửa lớp",
+  "class.assign": "Phân công giáo viên",
   "class.enroll": "Thêm học sinh vào lớp",
   "class.unenroll": "Cho học sinh nghỉ lớp",
   "schedule.create": "Tạo lịch định kỳ",
@@ -406,6 +407,19 @@ export default function Dashboard({ initial }: { initial: Data }) {
             setTab("classes");
           }
           break;
+        case "class-assign":
+          response = await api("class.assign", {
+            ...values,
+            class_id: item!.id,
+          });
+          if (response.class)
+            setData((current) =>
+              addCreatedClass(
+                { ...current, classes: current.classes },
+                response.class,
+              ),
+            );
+          break;
         case "student-edit":
           response = await api("student.update", {
             ...values,
@@ -533,17 +547,21 @@ export default function Dashboard({ initial }: { initial: Data }) {
       try {
         await refresh();
       } catch (syncError) {
-        if (dialog.type === "class" && response.class) {
+        if (["class", "class-assign"].includes(dialog.type) && response.class) {
           setDialog(null);
-          setToast(`Đã tạo lớp ${response.class.name}.`);
+          setToast(
+            dialog.type === "class"
+              ? `Đã tạo lớp ${response.class.name}.`
+              : "Đã cập nhật phân công giáo viên.",
+          );
           setError(
-            "Lớp đã được lưu. Một số dữ liệu khác chưa đồng bộ được; hệ thống sẽ thử tải lại.",
+            "Thông tin lớp đã được lưu. Một số dữ liệu khác chưa đồng bộ được; hệ thống sẽ thử tải lại.",
           );
           return;
         }
         throw syncError;
       }
-      if (dialog.type === "class" && response.class)
+      if (["class", "class-assign"].includes(dialog.type) && response.class)
         setData((current) =>
           addCreatedClass(
             { ...current, classes: current.classes },
@@ -553,9 +571,11 @@ export default function Dashboard({ initial }: { initial: Data }) {
       if (!["student", "teacher"].includes(dialog.type)) setDialog(null);
       if (dialog.type !== "generate")
         setToast(
-          dialog.type === "class"
-            ? `Đã tạo lớp ${response.class?.name || ""}.`
-            : "Đã lưu thay đổi.",
+          dialog.type === "class-assign"
+            ? "Đã cập nhật phân công giáo viên."
+            : dialog.type === "class"
+              ? `Đã tạo lớp ${response.class?.name || ""}.`
+              : "Đã lưu thay đổi.",
         );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Có lỗi xảy ra.");
@@ -638,13 +658,27 @@ export default function Dashboard({ initial }: { initial: Data }) {
     setError("");
     setMobile(false);
   }
-  function TeacherSelect() {
+  function TeacherSelect({
+    allowEmpty = false,
+    emptyLabel = "Chưa phân công",
+    label = "Giáo viên quản lý",
+    defaultValue = "",
+  }: {
+    allowEmpty?: boolean;
+    emptyLabel?: string;
+    label?: string;
+    defaultValue?: string;
+  } = {}) {
     return owner ? (
       <Select
         name="teacher_id"
-        label="Giáo viên quản lý"
-        defaultValue={data.actor.id}
+        label={label}
+        defaultValue={defaultValue}
+        required={!allowEmpty}
       >
+        <option value="" disabled={!allowEmpty}>
+          {allowEmpty ? emptyLabel : "Chọn giáo viên"}
+        </option>
         {data.teachers.map((t: Row) => (
           <option key={t.id} value={t.id}>
             {t.name}
@@ -1030,7 +1064,13 @@ export default function Dashboard({ initial }: { initial: Data }) {
             <>
               <div className="stat-grid">
                 <Stat
-                  label={student ? "Lớp đang theo học" : "Lớp đang giảng dạy"}
+                  label={
+                    owner
+                      ? "Toàn bộ lớp học"
+                      : student
+                        ? "Lớp đang theo học"
+                        : "Lớp đang giảng dạy"
+                  }
                   value={data.classes.length}
                   detail={`${todaySessions.length} buổi học hôm nay`}
                   icon={<School size={21} />}
@@ -1286,10 +1326,16 @@ export default function Dashboard({ initial }: { initial: Data }) {
                       {!student && (
                         <button
                           className="button primary"
-                          onClick={() => open("enroll", c)}
+                          onClick={() =>
+                            open(owner ? "class-assign" : "enroll", c)
+                          }
                         >
                           <Plus size={16} />
-                          Thêm học sinh
+                          {owner
+                            ? c.teacher_id
+                              ? "Đổi giáo viên"
+                              : "Phân công"
+                            : "Thêm học sinh"}
                         </button>
                       )}
                     </div>
@@ -1853,8 +1899,20 @@ export default function Dashboard({ initial }: { initial: Data }) {
                     </span>
                     <span>
                       {
-                        data.students.filter((s: Row) => s.teacher_id === t.id)
-                          .length
+                        data.students.filter(
+                          (s: Row) =>
+                            s.teacher_id === t.id ||
+                            data.enrollments.some(
+                              (e: Row) =>
+                                e.student_id === s.id &&
+                                !e.ended_at &&
+                                data.classes.some(
+                                  (c: Row) =>
+                                    c.id === e.class_id &&
+                                    c.teacher_id === t.id,
+                                ),
+                            ),
+                        ).length
                       }{" "}
                       học sinh
                     </span>
@@ -2134,6 +2192,7 @@ export default function Dashboard({ initial }: { initial: Data }) {
                   "student-edit",
                   "class",
                   "class-edit",
+                  "class-assign",
                   "import",
                   "teacher",
                   "enroll",
@@ -2154,7 +2213,10 @@ export default function Dashboard({ initial }: { initial: Data }) {
                   >
                     {dialog.type === "import" && (
                       <>
-                        <TeacherSelect />
+                        <TeacherSelect
+                          allowEmpty
+                          emptyLabel="Trung tâm quản lý"
+                        />
                         <label>
                           Danh sách học sinh CSV
                           <input
@@ -2258,7 +2320,10 @@ export default function Dashboard({ initial }: { initial: Data }) {
                             required={false}
                           />
                         </div>
-                        <TeacherSelect />
+                        <TeacherSelect
+                          allowEmpty
+                          emptyLabel="Trung tâm quản lý"
+                        />
                         <label>
                           Ghi chú
                           <textarea name="notes" rows={3} />
@@ -2297,7 +2362,10 @@ export default function Dashboard({ initial }: { initial: Data }) {
                             max={200}
                           />
                         </div>
-                        <TeacherSelect />
+                        <TeacherSelect
+                          allowEmpty
+                          label="Giáo viên được phân công"
+                        />
                         <div className="alert info">
                           Học phí cố định 50.000đ/buổi. Vắng có phép không tính
                           tiền.
@@ -2318,6 +2386,24 @@ export default function Dashboard({ initial }: { initial: Data }) {
                         </p>
                       </>
                     )}
+                    {dialog.type === "class-assign" && (
+                      <>
+                        <p>
+                          Phân công giáo viên cho lớp{" "}
+                          <strong>{dialog.item!.name}</strong>.
+                        </p>
+                        <TeacherSelect
+                          allowEmpty
+                          label="Giáo viên phụ trách"
+                          defaultValue={dialog.item!.teacher_id || ""}
+                        />
+                        <p className="form-hint">
+                          Chỉ cập nhật giáo viên của các buổi chưa khóa. Điểm
+                          danh đã khóa, khoản thu và lịch sử thanh toán được giữ
+                          nguyên.
+                        </p>
+                      </>
+                    )}
                     {dialog.type === "enroll" && (
                       <>
                         <p>
@@ -2329,7 +2415,6 @@ export default function Dashboard({ initial }: { initial: Data }) {
                           {data.students
                             .filter(
                               (s: Row) =>
-                                s.teacher_id === dialog.item!.teacher_id &&
                                 !data.enrollments.some(
                                   (e: Row) =>
                                     e.class_id === dialog.item!.id &&
@@ -2800,6 +2885,16 @@ export default function Dashboard({ initial }: { initial: Data }) {
                         >
                           Sửa lớp
                         </button>
+                        {owner && (
+                          <button
+                            className="button primary"
+                            onClick={() => open("class-assign", dialog.item)}
+                          >
+                            {dialog.item!.teacher_id
+                              ? "Đổi giáo viên"
+                              : "Phân công giáo viên"}
+                          </button>
+                        )}
                         <button
                           className="button"
                           onClick={() => open("enroll", dialog.item)}
@@ -2809,6 +2904,12 @@ export default function Dashboard({ initial }: { initial: Data }) {
                         <button
                           className="button primary"
                           onClick={() => open("schedule")}
+                          disabled={!dialog.item!.teacher_id}
+                          title={
+                            !dialog.item!.teacher_id
+                              ? "Phân công giáo viên trước khi tạo lịch học"
+                              : undefined
+                          }
                         >
                           Thêm lịch học
                         </button>
@@ -3296,6 +3397,7 @@ function dialogTitle(type: string) {
         student: "Thêm học sinh",
         "student-edit": "Sửa hồ sơ học sinh",
         "class-edit": "Sửa lớp học",
+        "class-assign": "Phân công giáo viên",
         import: "Nhập học sinh từ CSV",
         class: "Tạo lớp học",
         teacher: "Thêm giáo viên",

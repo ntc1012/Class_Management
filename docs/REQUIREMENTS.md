@@ -11,6 +11,11 @@
 
 ## Lớp, lịch, điểm danh
 
+- Admin tạo lớp mà không tự trở thành giáo viên. Lớp có thể ở trạng thái chưa phân công; admin chọn hoặc đổi giáo viên phụ trách trong mục Phân công giáo viên. Chỉ chọn giáo viên đang hoạt động trong cùng trung tâm.
+- Giáo viên chỉ truy cập lớp đang được giao. Học sinh do admin thêm vào lớp cũng hiển thị cho giáo viên phụ trách.
+- Đổi giáo viên cập nhật các buổi chưa khóa và kiểm tra trùng lịch. Buổi đã khóa lưu giáo viên tại thời điểm dạy; khoản thu, thanh toán và điểm danh cũ không bị chuyển sang giáo viên mới.
+- Các lớp cũ từng tự gán admin làm giáo viên được chuyển thành chưa phân công, giữ nguyên lớp và lịch sử. Admin có thể phân công ngay trên lớp đó.
+
 - Giáo viên tạo lớp và thêm học sinh; chủ trung tâm có thể thực hiện thay giáo viên.
 - Lịch lặp theo tuần, tạo trước tối đa một năm. Phát hiện trùng giờ giáo viên hoặc phòng trong cùng trung tâm.
 - Đổi một buổi hoặc buổi được chọn cùng các buổi chưa học tiếp theo trong chuỗi. Đổi chuỗi dịch ngày theo cùng số ngày và dùng giờ mới.
