@@ -10,7 +10,13 @@ import {
   localDate,
 } from "../src/lib/rules";
 import * as service from "../src/lib/service";
-import { recordPayment, webhook, checkout } from "../src/lib/payments";
+import {
+  recordPayment,
+  webhook,
+  checkout,
+  paymentMode,
+  isDemo,
+} from "../src/lib/payments";
 import { snapshot } from "../src/lib/snapshot";
 import { upload, download } from "../src/lib/storage";
 import type { Actor } from "../src/lib/types";
@@ -47,6 +53,36 @@ const owner: Actor = {
   name: "Owner",
   email: "o@test.local",
 };
+describe("Hosted payment configuration", () => {
+  it("supports explicit demo on production without enabling local storage", () => {
+    const previous = {
+      NODE_ENV: process.env.NODE_ENV,
+      PAYMENT_MODE: process.env.PAYMENT_MODE,
+      ALLOW_LOCAL_PRODUCTION: process.env.ALLOW_LOCAL_PRODUCTION,
+    };
+    try {
+      Object.assign(process.env, {
+        NODE_ENV: "production",
+        PAYMENT_MODE: "demo",
+      });
+      delete process.env.ALLOW_LOCAL_PRODUCTION;
+      assert.equal(isDemo(), true);
+      assert.equal(paymentMode(), "demo");
+      delete process.env.PAYMENT_MODE;
+      assert.equal(paymentMode(), "disabled");
+      process.env.PAYMENT_MODE = "invalid";
+      assert.equal(paymentMode(), "disabled");
+      process.env.PAYMENT_MODE = "live";
+      assert.equal(isDemo(), false);
+      assert.equal(paymentMode(), "live");
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+});
 let classId: string,
   studentId: string,
   student: Actor,

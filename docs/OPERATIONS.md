@@ -10,6 +10,12 @@ Vercel: `vercel.json` chọn preset Next.js và thư mục đầu ra `.next`, gh
 - Không đưa `.env.local`, `data/`, `backups/` hoặc file xuất chứa mã kích hoạt lên Git.
 - `ALLOW_LOCAL_PRODUCTION=1` chỉ dành cho kiểm tra bản build ở máy local; không bật khi đưa lên Internet.
 
+## Cấu hình bản thử trên Vercel
+
+Đặt `APP_URL=https://classmanagement-omega.vercel.app`, `DATABASE_URL` vào PostgreSQL của project và `PAYMENT_MODE=demo`. Chế độ demo được hỗ trợ ngay cả khi `NODE_ENV=production`, không cần và không được bật `ALLOW_LOCAL_PRODUCTION`. Nếu production không đặt `PAYMENT_MODE` hoặc đặt sai, tính năng tạo yêu cầu thanh toán bị tắt thay vì tự chuyển sang thu tiền thật.
+
+Đặt `ENCRYPTION_KEY` và `CRON_SECRET` bằng secret ngẫu nhiên riêng. Khi có kho file S3, bổ sung các biến `S3_*` trong `.env.example`. Không có kho file thì chưa thể nhận file bài tập trên Vercel. Sau khi kết nối database, chạy migrate, tạo tài khoản chủ trung tâm riêng rồi redeploy để áp dụng các biến môi trường. Không seed tài khoản/mật khẩu demo công khai vào bản Internet.
+
 ## Khởi tạo production
 
 1. Cấp PostgreSQL và bucket S3 private. Điền các biến trong `.env.example` vào secret của hosting hoặc `.env.local` ở máy quản trị.

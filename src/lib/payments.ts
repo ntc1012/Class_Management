@@ -6,10 +6,14 @@ import { decrypt } from "./security";
 import { invoiceAccess, owner, staff } from "./policy";
 import { invoiceTotals, audit, id, notify } from "./service";
 import { AppError, type Actor } from "./types";
-export const isDemo = () =>
-  process.env.PAYMENT_MODE !== "live" &&
-  (process.env.NODE_ENV !== "production" ||
-    process.env.ALLOW_LOCAL_PRODUCTION === "1");
+export function paymentMode(): "demo" | "live" | "disabled" {
+  const configured = process.env.PAYMENT_MODE;
+  if (configured === "demo" || configured === "live") return configured;
+  return !configured && process.env.NODE_ENV !== "production"
+    ? "demo"
+    : "disabled";
+}
+export const isDemo = () => paymentMode() === "demo";
 async function provider(teacherId: string) {
   const account = await one("SELECT * FROM bank_accounts WHERE teacher_id=?", [
     teacherId,
@@ -19,6 +23,10 @@ async function provider(teacherId: string) {
   return { account, client: new PayOS(decrypt(account.credentials)) };
 }
 export async function checkout(a: Actor, invoiceId: string) {
+  if (paymentMode() === "disabled")
+    throw new AppError(
+      "Thanh toán chưa được bật. Cần cấu hình PAYMENT_MODE là demo hoặc live.",
+    );
   const invoice = await invoiceAccess(a, invoiceId);
   const request = await transaction(async () => {
     await lock("SELECT id FROM invoices WHERE id=?", [invoice.id]);
